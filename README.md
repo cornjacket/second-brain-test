@@ -13,9 +13,21 @@ vector sidecar in sync, which hydrates a local vector cache for semantic search.
 ## Layout
 
 ```
-projects/  areas/  resources/  archive/   # the PARA vault (notes + .embed.json sidecars)
-scripts/                                   # embedder, db, embed_staged, hydrate, search, register
-.githooks/pre-commit                       # embeds staged notes on commit
+├── .githooks/
+│   └── pre-commit      # Embeds staged notes into .embed.json sidecars on commit
+├── config/             # Optional: tool-specific configs (e.g. AI agent prompts)
+├── data/               # Derived cache — hidden/read-only from Obsidian
+│   └── brain.db        # SQLite vec0 vector cache (safe to delete & rebuild)
+├── scripts/            # Local utility scripts (embedder, db, hydrate, search, register)
+│   ├── embedder.py     # Single embedding backend (test | ollama)
+│   ├── hydrate_cache.py# Builds brain.db from the .embed.json sidecars
+│   └── search_vault.py # Semantic query over the cache
+└── vault/              # The Obsidian Vault root — point Obsidian here (your Second Brain)
+    ├── .obsidian/      # Native Obsidian configuration directory
+    ├── projects/       # PARA: goal-bound efforts        (+ .embed.json sidecars)
+    ├── areas/          # PARA: ongoing responsibilities
+    ├── resources/      # PARA: durable reference
+    └── archive/        # PARA: inactive
 ```
 
 ## Quickstart
