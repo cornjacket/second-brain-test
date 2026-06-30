@@ -1,0 +1,8 @@
+# Derived cache — rebuilt from sidecars by scripts/hydrate_cache.py.
+.cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
