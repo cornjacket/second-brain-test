@@ -41,6 +41,16 @@ scripts/                            scripts/          (unchanged location)
 - `git mv projects areas resources archive` into a new `vault/` directory.
 - This moves the `.md` notes **and** any committed `.*.embed.json` sidecars with
   them (paths inside sidecars are not absolute, so contents are unaffected).
+- Coordinates with **Task 0003**: the canonical seed notes' home becomes
+  `seeds/<para>/`, and `vault/<para>/` is (re)populated by `seed_vault.py`. Decide
+  with 0003 whether the moved notes land directly in `vault/` (then copied back to
+  `seeds/`) or are relocated to `seeds/` first and seeded into `vault/`.
+
+### 1b. Activate the pipeline (gates all note generation)
+- `chmod +x .githooks/pre-commit`; `git config core.hooksPath .githooks`.
+- Symlink `GEMINI.md` → `CLAUDE.md` so both AIs read identical instructions.
+- This is done **here** (not deferred to M1) so the restructure's own smoke test
+  and the later M1 verification both run against an active hook.
 
 ### 2. Repoint the embed-staging logic (`scripts/embed_staged.py`)
 - `PARA_ROOTS = ("projects", "areas", "resources", "archive")` (line ~22) — the
@@ -120,5 +130,6 @@ git rm vault/areas/migration-smoke.md vault/areas/.migration-smoke.embed.json
 - Use `git mv` (not plain `mv`) so history follows the files.
 - This must land as **one** task commit per CLAUDE.md schema (moves + path edits +
   doc sweep together), since a half-migrated tree breaks both the hook and search.
-- Depends on Milestone 1 activation being done first (hook activated, deterministic
-  `test` embedder verified) so the smoke test above is meaningful.
+- **This task gates the rest of the build:** it activates the hook and creates the
+  `vault/` structure, so Task 0003 (seeding) and the M1 verification/sidecar-commit
+  steps all depend on it. No further PARA notes are generated until this lands.
