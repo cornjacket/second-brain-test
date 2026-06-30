@@ -7,12 +7,15 @@ spec for what to generate.
 
 Status: `[x]` done & committed · `[~]` written, not yet verified/committed · `[ ]` not started
 
+Larger units of work get a full **task document** under [`tasks/`](tasks/); this
+file links to them and tracks their open/closed state.
+
 ## Milestone 0 — Product docs ✅
 - [x] `SPEC.md` — canonical product spec (PARA, sidecar schema, embedding contract, stage contracts, `register`, runtime, safety, roadmap)
 - [x] `CLAUDE.md` — in-brain agent memory (`GEMINI.md` will symlink to it)
 - [x] `README.md` — overview + quickstart
 
-## Milestone 1 — Core pipeline (embed → hydrate → search)  ← NEXT
+## Milestone 1 — Core pipeline (embed → hydrate → search)
 Code is written & committed (unverified). The hook is **not** activated, so no
 sidecars exist yet; activation + verification are still pending.
 - [x] `scripts/embedder.py` — `test` + `ollama` backends (768-dim, L2, deterministic `test`)
@@ -26,6 +29,12 @@ sidecars exist yet; activation + verification are still pending.
 - [ ] Verify stage 1 — commit a note → hook writes & stages its sidecar; re-embed → clean diff (deterministic)
 - [ ] Verify stages 2–3 — `pip install apsw`; `hydrate_cache.py` builds cache; `search_vault.py` returns ranked rows
 - [ ] Commit the generated sidecars (the verified, working brain)
+
+## Task 0001 — Migrate to `vault/`-rooted layout  ← NEXT
+- [ ] Move PARA roots under `vault/`, repoint cache to `data/brain.db`, update
+      scripts/hooks/`.gitignore` and sweep docs for stale paths.
+      Full spec: [`tasks/0001-migrate-to-vault-rooted-layout.md`](tasks/0001-migrate-to-vault-rooted-layout.md)
+      (makes the repo match the README *Layout*; depends on M1 activation).
 
 ## Milestone 2 — Registration & ingestion
 - [ ] `scripts/register.py` — inject an idempotent managed block into a target project's `CLAUDE.md` pointing at this brain
