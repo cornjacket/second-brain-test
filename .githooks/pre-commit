@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Second Brain pre-commit hook — keep machine vectors in sync with human notes.
+# Regenerates `.embed.json` sidecars for staged PARA notes and stages them into
+# the same commit. See scripts/embed_staged.py and SPEC.md §5.1.
+set -euo pipefail
+python3 "$(git rev-parse --show-toplevel)/scripts/embed_staged.py"

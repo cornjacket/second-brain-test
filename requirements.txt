@@ -1,0 +1,6 @@
+# Cache stages (hydrate/search) — load the sqlite-vec extension.
+sqlite-vec>=0.1.9
+
+# Fallback connector when the local Python/SQLite build cannot load extensions
+# (common on macOS). scripts/db.py prefers stdlib sqlite3 and falls back to apsw.
+apsw>=3.46

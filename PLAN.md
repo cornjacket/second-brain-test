@@ -13,18 +13,19 @@ Status: `[x]` done & committed · `[~]` written, not yet verified/committed · `
 - [x] `README.md` — overview + quickstart
 
 ## Milestone 1 — Core pipeline (embed → hydrate → search)  ← NEXT
-Scripts are written; activation + verification + commit are pending.
-- [~] `scripts/embedder.py` — `test` + `ollama` backends (768-dim, L2, deterministic `test`)
-- [~] `scripts/db.py` — stdlib `sqlite3` → `apsw` fallback for `sqlite-vec`
-- [~] `scripts/embed_staged.py` — pre-commit embed of staged PARA notes
-- [~] `scripts/hydrate_cache.py` — wipe + rebuild `vec0` cache
-- [~] `scripts/search_vault.py` — cosine KNN search
-- [~] `.githooks/pre-commit`, `.gitattributes`, `.gitignore`, `requirements.txt`
-- [~] PARA seed notes (`projects/`, `areas/`, `resources/`, `archive/`)
+Code is written & committed (unverified). The hook is **not** activated, so no
+sidecars exist yet; activation + verification are still pending.
+- [x] `scripts/embedder.py` — `test` + `ollama` backends (768-dim, L2, deterministic `test`)
+- [x] `scripts/db.py` — stdlib `sqlite3` → `apsw` fallback for `sqlite-vec`
+- [x] `scripts/embed_staged.py` — pre-commit embed of staged PARA notes
+- [x] `scripts/hydrate_cache.py` — wipe + rebuild `vec0` cache
+- [x] `scripts/search_vault.py` — cosine KNN search
+- [x] `.githooks/pre-commit`, `.gitattributes`, `.gitignore`, `requirements.txt`
+- [x] PARA seed notes (`projects/`, `areas/`, `resources/`, `archive/`)
 - [ ] Activate: `chmod +x` hook, `git config core.hooksPath .githooks`, symlink `GEMINI.md` → `CLAUDE.md`
 - [ ] Verify stage 1 — commit a note → hook writes & stages its sidecar; re-embed → clean diff (deterministic)
 - [ ] Verify stages 2–3 — `pip install apsw`; `hydrate_cache.py` builds cache; `search_vault.py` returns ranked rows
-- [ ] Commit the working pipeline + seed vault + sidecars
+- [ ] Commit the generated sidecars (the verified, working brain)
 
 ## Milestone 2 — Registration & ingestion
 - [ ] `scripts/register.py` — inject an idempotent managed block into a target project's `CLAUDE.md` pointing at this brain
