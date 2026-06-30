@@ -1,6 +1,6 @@
 ---
 id: 0002
-title: Markdown line-count guard — warn when a note exceeds 200 non-empty lines
+title: Markdown line-count guard — warn when a note exceeds 300 non-empty lines
 status: open
 priority: after-0001
 deferred: true
@@ -11,86 +11,109 @@ tags: [tooling, hooks, claude-md, markdown, dx]
 # Task 0002 — Markdown line-count guard
 
 > **Implementation deferred.** This document captures intent and design only. Do
-> not implement until explicitly prioritized.
+> not implement until explicitly prioritized. Runs **after** task 0001.
 
 ## Goal
 
-When a Markdown file in this repo grows past **200 non-empty lines**, surface a
-one-time nudge to **segment it into two or more files**. Long notes hurt both
-human readability and embedding/retrieval quality (one giant vector per note).
+When a Markdown note in this repo grows past **300 non-empty lines**, surface a
+nudge to **segment it into two or more files**. Long notes hurt both human
+readability and embedding/retrieval quality (one giant vector per note).
+
+## Scope — what the guard checks
+
+- **Threshold: > 300 non-empty lines** = violation (blank / whitespace-only lines
+  do not count).
+- **Excluded paths** (never checked, regardless of length):
+  - `README.md`
+  - everything under `tasks/` (task documents are allowed to be long).
+- All other `*.md` files are in scope.
 
 ## Components
 
 ### Component A — line-count checker script
 - New script, e.g. `scripts/check_line_count.py`.
 - Input: one (or more) Markdown file path(s).
-- Counts **non-empty** lines only (lines that are blank or whitespace-only do
-  **not** count toward the total).
-- Threshold: **> 200** non-empty lines = violation.
-- Output contract (to be finalized at implementation time):
-  - exit `0` + no output when under threshold,
-  - non-zero exit (or a structured stdout line) naming the file and its count
-    when over threshold, so a caller/hook can act on it.
+- Counts **non-empty** lines only; threshold is **> 300**.
+- Skips excluded paths (`README.md`, anything under `tasks/`).
+- Output contract (finalize at implementation):
+  - exit `0` + no output when under threshold or excluded,
+  - non-zero exit (or a structured stdout line) naming the file and its count on
+    violation, so a caller/hook can act on it.
 - Pure stdlib Python; no dependency on the embedder/cache pipeline.
 
 ### Component B — the trigger wiring
-Whenever a Markdown file **other than `README.md`** is edited, run Component A on
-it. On violation, the AI emits a single **emoji-led** line telling the user the
-file should be segmented into two or more files.
+See the decision below. The chosen mechanism runs Component A and, on violation,
+emits a single **emoji-led** line telling the user to segment the file.
 
 Behavior rules:
-- **Exclude `README.md`** from the check.
-- **Display once per edit.** The warning is shown once when the violating edit
-  happens. It is **not** repeated until the file is edited again (the next edit
-  re-triggers the check).
-- **Never auto-edit.** The AI must **not** split/segment the Markdown file on its
-  own. It only surfaces the nudge; the user must expressly direct any
+- **Respect exclusions** (`README.md`, `tasks/`).
+- **Never auto-edit.** The guard only surfaces the nudge; the AI must **not**
+  split/segment the file on its own. The user must expressly direct any
   restructuring.
 
-## Open design decision — how to wire the trigger
+## Decision — wiring mechanism
 
-Two candidate mechanisms; **pick one at implementation time.** The PostToolUse
-hook (Option 1) is the cleaner fit and is the current lean.
+Adopted approach: **pre-commit check (primary coverage) + optional PostToolUse
+hook (live in-session feedback).** Both are deterministic and cost zero model
+tokens. The standalone CLAUDE.md-directive option is rejected (soft enforcement,
+token cost every edit, unreliable "show once" state).
 
-### Option 1 (recommended) — PostToolUse tool hook
+Rationale — the key insight: **a PostToolUse hook only fires when *Claude* edits
+a file.** In this second brain, most note growth happens in **Obsidian / a plain
+editor**, where no Claude tool runs, so a PostToolUse-only guard would miss the
+dominant case. A CLAUDE.md directive has the same blind spot (and is also
+Claude-only — Gemini ignores it). A **pre-commit** check catches *every* note
+regardless of who or what edited it (Claude, Gemini, Obsidian, vim), making it
+the right primary mechanism for this repo, which already ships a
+`.githooks/pre-commit`.
+
+### Primary — pre-commit check (editor-agnostic, all coverage)
+- Extend the existing `.githooks/pre-commit` (or call Component A from it) to
+  check each staged `*.md` (excluding `README.md` and `tasks/`).
+- On violation: **warn, do not block** the commit — print the emoji-led
+  segmentation nudge to the terminal.
+- Catches every note however it was edited; deterministic; zero tokens; works for
+  both Claude and Gemini.
+- Limitation: fires at commit time, not live mid-edit. The optional hook below
+  covers the live case.
+
+### Optional — PostToolUse hook (live feedback while editing with Claude)
 - A `PostToolUse` hook in `.claude/settings.json` matching `Edit`/`Write`/
-  `MultiEdit` on `*.md` paths (excluding `README.md`).
-- The hook runs `scripts/check_line_count.py` on the edited file.
-- On violation it feeds the result back to the session (e.g. via the hook's
-  JSON output / additionalContext) so the AI prints the emoji-led segmentation
-  warning.
-- "Display once per edit" falls out naturally: the hook fires once per edit
-  event, so the warning appears once and only re-appears on the next edit.
-- A second script (`scripts/install_line_guard_hook.py`, idempotent — same
-  managed-block pattern as the planned `register.py`) can install/update this
-  hook config so setup is one command.
-
-### Option 2 (literal original ask) — directive injected into CLAUDE.md
-- A script that injects an idempotent **managed block** into `CLAUDE.md`
-  instructing the AI: after editing any `.md` file except `README.md`, invoke
-  `scripts/check_line_count.py` and, on violation, emit the emoji-led "segment
-  this file" nudge once.
-- Downside vs. Option 1: relies on the AI remembering to run the check every
-  time (soft enforcement), whereas a hook enforces it deterministically.
+  `MultiEdit`, running Component A on the edited file (exclusions enforced
+  **inside** the script, since matchers key on tool name, not path).
+- Have the **hook print the warning directly** (no round-trip back through the
+  model) so it stays truly zero-token. Drop the earlier "the AI outputs it"
+  framing — a deterministic printed line is preferred over an AI-authored one.
+- "Display once per edit" falls out naturally (one fire per edit event); dedupe
+  repeated edits to the same file within a turn / `MultiEdit` so it doesn't
+  multi-fire.
+- Claude-Code-only and requires hook-trust approval on each clone — acceptable
+  because it's a convenience layer on top of the pre-commit guarantee.
+- An idempotent installer (`scripts/install_line_guard_hook.py`, same managed-
+  block pattern as the planned `register.py`) can add/refresh this hook config.
 
 ## Acceptance criteria (when implemented)
 
-- [ ] `scripts/check_line_count.py` correctly counts non-empty lines and flags
-      files with > 200.
-- [ ] Editing a `.md` file (not `README.md`) that exceeds 200 non-empty lines
-      surfaces exactly one emoji-led segmentation warning.
-- [ ] Editing `README.md` never triggers the warning regardless of length.
-- [ ] The warning is not repeated until the file is edited again.
-- [ ] The AI does not modify/split the offending file unless the user explicitly
-      asks.
-- [ ] Whichever wiring is chosen (hook or CLAUDE.md directive) is installed by an
-      idempotent setup script (re-running refreshes, never duplicates).
+- [ ] `scripts/check_line_count.py` counts non-empty lines and flags files with
+      > 300; respects the `README.md` and `tasks/` exclusions.
+- [ ] The pre-commit path warns (without blocking) when a staged in-scope `.md`
+      exceeds 300 non-empty lines, however the file was edited.
+- [ ] Editing `README.md` or any file under `tasks/` never triggers the warning,
+      regardless of length.
+- [ ] If the optional PostToolUse hook is installed, editing an in-scope `.md`
+      over threshold surfaces exactly one emoji-led nudge per edit.
+- [ ] The guard never modifies/splits the offending file unless the user
+      explicitly asks.
+- [ ] Whichever wiring is installed is set up by an idempotent script (re-running
+      refreshes, never duplicates).
 
 ## Notes / risks
 
-- Decide the exact emoji + message wording at implementation (keep it short and
-  scannable, e.g. a single line).
-- Confirm the non-empty-line semantics on fenced code blocks / front-matter (do
-  they count? current intent: any line with non-whitespace content counts).
-- If Option 1 is chosen, verify the hook path resolution works from arbitrary
-  CWDs (use the repo-root resolution pattern already used in `scripts/`).
+- Decide the exact emoji + message wording at implementation (single short,
+  scannable line).
+- Confirm non-empty-line semantics on fenced code blocks / front-matter (current
+  intent: any line with non-whitespace content counts).
+- Use the repo-root resolution pattern already used in `scripts/` so paths work
+  from arbitrary CWDs.
+- Keep the pre-commit warning non-blocking — a hard reject would be hostile to
+  in-progress note-taking.

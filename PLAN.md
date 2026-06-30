@@ -37,9 +37,11 @@ sidecars exist yet; activation + verification are still pending.
       (makes the repo match the README *Layout*; depends on M1 activation).
 
 ## Task 0002 — Markdown line-count guard (after 0001; deferred)
-- [ ] Warn (once per edit) when a `.md` file other than `README.md` exceeds 200
-      non-empty lines, nudging to segment it; never auto-edit. Likely a
-      PostToolUse hook. Runs **after** the 0001 restructure; **implementation deferred.**
+- [ ] Warn (don't block, don't auto-edit) when an in-scope `.md` exceeds 300
+      non-empty lines, nudging to segment it. Excludes `README.md` and `tasks/`.
+      Primary: pre-commit check (catches Obsidian/any editor); optional PostToolUse
+      hook for live feedback. Both deterministic / zero-token. Runs **after** the
+      0001 restructure; **implementation deferred.**
       Full spec: [`tasks/0002-markdown-line-count-guard.md`](tasks/0002-markdown-line-count-guard.md)
 
 ## Milestone 2 — Registration & ingestion
