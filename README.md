@@ -31,6 +31,11 @@ python3 scripts/hydrate_cache.py        # build the vec0 cache from sidecars
 python3 scripts/search_vault.py "vector search"
 ```
 
+> **Tip for Obsidian:** You will want to point Obsidian to open the `/vault`
+> directory as the vault root, rather than the root of the entire Git
+> repository. This keeps Obsidian's internal `.obsidian` files clean and prevents
+> it from indexing your Python scripts or SQLite databases as notes.
+
 By default the pipeline uses a deterministic **`test`** embedder (stable,
 diffable, but not semantic). For real semantic search, run a local Ollama server
 and set `SECOND_BRAIN_EMBEDDER=ollama`. See [SPEC.md](SPEC.md) §4.
