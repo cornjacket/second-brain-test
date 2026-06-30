@@ -1,14 +1,14 @@
-# Daily plan — YYYY-MM-DD
+# Daily plan — 2026-06-30
 
-<!--
-  Forward-looking companion to log.md. Single-day scope. Always overwritten,
-  never appended. Aggregated across repos by ai-project-status into
-  daily-plan-summary.md.
+Drive **second-brain-test** to a working core pipeline. PLAN.md is the canonical tracker; this is just the day's shape.
 
-  - First line MUST be `# Daily plan — YYYY-MM-DD` (the date is the staleness signal).
-  - Body: a short bullet list of the day's intent + a small ASCII diagram of the day's shape.
-  - At end-of-session signoff, overwrite with tomorrow's plan (Friday writes Monday's).
-  - On Saturday/Sunday a Friday plan is still considered fresh.
--->
+- Re-orient: skim PLAN.md, the `scripts/` pipeline, and SPEC.md invariants before touching code.
+- Finish Milestone 1: activate the embed hook + symlink, then verify the full embed → hydrate → search loop end-to-end and commit the generated sidecars.
+- Stretch (if time): start Milestone 2 — `register.py` injects an idempotent brain block into a target repo; smoke-test ingestion.
+- Respect invariants: one embedder for notes + queries, no hand-edited sidecars, local-first only.
+- Known blocker: real semantic-quality check needs the `ollama` backend (unavailable here); `test` backend proves plumbing only.
 
-(no plan yet — replace this body and update the date in the header above)
+```
+Warm-up ──> M1: activate + verify pipeline ──> commit sidecars ──> [stretch] M2: register + ingest
+ reorient        embed → hydrate → search          working brain        idempotent block
+```
