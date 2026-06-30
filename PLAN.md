@@ -36,6 +36,12 @@ sidecars exist yet; activation + verification are still pending.
       Full spec: [`tasks/0001-migrate-to-vault-rooted-layout.md`](tasks/0001-migrate-to-vault-rooted-layout.md)
       (makes the repo match the README *Layout*; depends on M1 activation).
 
+## Task 0002 — Markdown line-count guard (after 0001; deferred)
+- [ ] Warn (once per edit) when a `.md` file other than `README.md` exceeds 200
+      non-empty lines, nudging to segment it; never auto-edit. Likely a
+      PostToolUse hook. Runs **after** the 0001 restructure; **implementation deferred.**
+      Full spec: [`tasks/0002-markdown-line-count-guard.md`](tasks/0002-markdown-line-count-guard.md)
+
 ## Milestone 2 — Registration & ingestion
 - [ ] `scripts/register.py` — inject an idempotent managed block into a target project's `CLAUDE.md` pointing at this brain
 - [ ] Verify idempotency (re-run refreshes the block, never duplicates)
