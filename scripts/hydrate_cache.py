@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hydrate the local SQLite ``vec0`` cache from ``.embed.json`` sidecars.
 
-Bulk-scans every sidecar in the vault and **wipes-and-rebuilds** ``.cache/vault.db``,
+Bulk-scans every sidecar in the vault and **wipes-and-rebuilds** ``data/brain.db``,
 the sqlite-vec virtual table the AI frontends query. The cache is derived state —
 safe to delete and rebuild at any time. See SPEC.md §5.2.
 """
@@ -18,12 +18,13 @@ from embedder import EMBED_DIM  # noqa: E402
 import sqlite_vec  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CACHE_DIR = REPO_ROOT / ".cache"
-DB_PATH = CACHE_DIR / "vault.db"
+VAULT_DIR = REPO_ROOT / "vault"
+CACHE_DIR = REPO_ROOT / "data"
+DB_PATH = CACHE_DIR / "brain.db"
 
 
 def find_sidecars() -> list[Path]:
-    return sorted(REPO_ROOT.rglob(".*.embed.json"))
+    return sorted(VAULT_DIR.rglob(".*.embed.json"))
 
 
 def main() -> int:

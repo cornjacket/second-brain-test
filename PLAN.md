@@ -16,8 +16,8 @@ notes are generated. So Milestone 1 is split: the written code is **M1a** (done)
 its note-generating verification is **M1b**, gated behind the restructure:
 
 - **M1a** — core pipeline code (written, unverified) ✅ *(done)*
-1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook) ← NEXT
-2. **Task 0002** — markdown line-count guard *(implementation deferred)*
+1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook) ✅ *(done)*
+2. **Task 0002** — markdown line-count guard ← NEXT
 3. **Task 0003** — PARA seed script (wipe & re-seed)
 4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars
 5. **Milestone 2** — registration & ingestion
@@ -40,8 +40,8 @@ continues below in **Milestone 1b**, *after* Tasks 0001–0003.
 - [x] `.githooks/pre-commit`, `.gitattributes`, `.gitignore`, `requirements.txt`
 - [x] PARA seed notes written — to be relocated to a `seeds/` source + re-seeded via Task 0003
 
-## Task 0001 — Migrate to `vault/`-rooted layout  ← NEXT
-- [ ] Move PARA roots under `vault/`, repoint cache to `data/brain.db`, activate
+## Task 0001 — Migrate to `vault/`-rooted layout ✅
+- [x] Move PARA roots under `vault/`, repoint cache to `data/brain.db`, activate
       the hook (`chmod +x`, `git config core.hooksPath .githooks`, symlink
       `GEMINI.md` → `CLAUDE.md`), update scripts/`.gitignore` and sweep docs for
       stale paths. **Gates all further note generation.**

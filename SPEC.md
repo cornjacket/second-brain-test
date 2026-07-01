@@ -35,10 +35,11 @@ roots is embedded; repo meta files (`README.md`, `CLAUDE.md`, `SPEC.md`,
 `scripts/`) are not.
 
 ```
-projects/    # active efforts with a goal and an end
-areas/       # ongoing responsibilities to maintain
-resources/   # topics & references of durable interest
-archive/     # inactive items from the other three
+vault/                 # the Obsidian vault root; PARA roots live inside it
+  projects/    # active efforts with a goal and an end
+  areas/       # ongoing responsibilities to maintain
+  resources/   # topics & references of durable interest
+  archive/     # inactive items from the other three
 ```
 
 ### Note format
@@ -64,23 +65,23 @@ Body text, with optional [[links]] to other notes.
 
 Each note has a sibling vector sidecar in the **same directory**, named with a
 **dotted prefix** (hidden by default) and the `.embed.json` suffix:
-`areas/knowledge-management.md` → `areas/.knowledge-management.embed.json`.
+`vault/areas/knowledge-management.md` → `vault/areas/.knowledge-management.embed.json`.
 
 ```json
 {
-  "source_file": "areas/knowledge-management.md",
+  "source_file": "vault/areas/knowledge-management.md",
   "vector": [0.0, 0.0, "... 768 floating-point numbers"]
 }
 ```
 
-- `source_file` — vault-relative POSIX path to the note.
+- `source_file` — repo-relative POSIX path to the note.
 - `vector` — exactly `EMBED_DIM` (768) floats (see §4).
 - Sidecars are **committed** (they are the expected output). The hook keeps them
   in lockstep with the note.
 - `.gitattributes` sets `.*.embed.json merge=binary` — git must **never** inject
   conflict markers into a vector, which would silently poison search.
 
-### 3.2 Cache (`.cache/vault.db`)
+### 3.2 Cache (`data/brain.db`)
 
 Derived state, rebuilt from the sidecars. **Gitignored.** A single `sqlite-vec`
 virtual table:
@@ -127,11 +128,11 @@ corrupt search. The shared `scripts/embedder.py` is the single source for both.
 
 ### 5.2 Hydrate (`scripts/hydrate_cache.py`)
 
-- **Wipe-and-rebuild** `.cache/vault.db` from scratch each run (the cache is
+- **Wipe-and-rebuild** `data/brain.db` from scratch each run (the cache is
   derived; never trusted as incremental state at this stage).
-- Scans every `**/.*.embed.json`, validates dimension, inserts into the `notes`
-  table (§3.2).
-- Prints `hydrated N note(s) -> .cache/vault.db`.
+- Scans every `vault/**/.*.embed.json`, validates dimension, inserts into the
+  `notes` table (§3.2).
+- Prints `hydrated N note(s) -> data/brain.db`.
 
 ### 5.3 Search (`scripts/search_vault.py "<query>"`)
 
@@ -179,7 +180,9 @@ brain user must never be required to adopt that tooling.
 ## 8. Repository layout
 
 ```
-projects/  areas/  resources/  archive/   # the PARA vault (notes + sidecars)
+vault/                 # the Obsidian vault root (point Obsidian here)
+  projects/  areas/  resources/  archive/   # PARA notes + .embed.json sidecars
+  .obsidian/           # Obsidian config (created when you open vault/)
 scripts/
   embedder.py        # embedding backends (§4)
   db.py              # sqlite-vec connection (§7)
@@ -187,9 +190,12 @@ scripts/
   hydrate_cache.py   # build cache (§5.2)
   search_vault.py    # semantic search (§5.3)
   register.py        # register a project repo (§6)
+data/                  # derived cache
+  brain.db           # sqlite-vec table (gitignored)
+config/                # optional tool-specific configs
 .githooks/pre-commit
 .gitattributes       # .*.embed.json merge=binary
-.gitignore           # .cache/, __pycache__/, .venv/
+.gitignore           # data/, __pycache__/, .venv/
 requirements.txt     # sqlite-vec, apsw
 CLAUDE.md            # in-brain agent memory (GEMINI.md symlinks to it)
 SPEC.md              # this file
@@ -197,7 +203,7 @@ README.md
 ```
 
 - **Committed:** PARA notes, `.embed.json` sidecars, scripts, hook, config.
-- **Derived (gitignored):** `.cache/vault.db`, `__pycache__/`.
+- **Derived (gitignored):** `data/brain.db`, `__pycache__/`.
 
 ## 9. Safety prohibitions
 

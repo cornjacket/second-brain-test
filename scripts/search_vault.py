@@ -2,7 +2,7 @@
 """Semantic search over the vault's ``vec0`` cache (SPEC.md §5.3).
 
 Embeds the query with the SAME backend that produced the note vectors, then runs
-a cosine-distance KNN against ``.cache/vault.db``. Mismatched embedders yield
+a cosine-distance KNN against ``data/brain.db``. Mismatched embedders yield
 meaningless results, so the backend is shared via ``scripts/embedder.py``.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from embedder import embed  # noqa: E402
 import sqlite_vec  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = REPO_ROOT / ".cache" / "vault.db"
+DB_PATH = REPO_ROOT / "data" / "brain.db"
 
 
 def main() -> int:

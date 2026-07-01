@@ -1,5 +1,6 @@
 # Derived cache — rebuilt from sidecars by scripts/hydrate_cache.py.
-.cache/
+data/*
+!data/.gitkeep
 
 # Python
 __pycache__/

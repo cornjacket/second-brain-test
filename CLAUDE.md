@@ -21,9 +21,9 @@ non-trivial work, and `PLAN.md` kept in sync. Favor legibility over speed.
 Durable lessons, insights, and architecture understandings belong here as **PARA
 notes** — there is no separate ingestion path; a note *is* the ingestion.
 
-- File the note under the right PARA root: `projects/` (goal-bound effort),
-  `areas/` (ongoing responsibility), `resources/` (durable reference),
-  `archive/` (inactive).
+- File the note under the right PARA root inside the vault: `vault/projects/`
+  (goal-bound effort), `vault/areas/` (ongoing responsibility), `vault/resources/`
+  (durable reference), `vault/archive/` (inactive).
 - Lowercase kebab-case filename, `.md`, with YAML frontmatter (`tags: [...]`).
   Link related notes with `[[wikilinks]]`.
 - Commit it. The pre-commit hook embeds the note into a `.embed.json` sidecar and
@@ -53,7 +53,7 @@ python3 scripts/hydrate_cache.py
 - **Never** edit a `.embed.json` sidecar by hand or let git conflict markers into
   one (`merge=binary` is enforced).
 - **Never** add a cloud vector store. This brain is local-first.
-- The cache (`.cache/vault.db`) is derived — safe to delete and rebuild anytime.
+- The cache (`data/brain.db`) is derived — safe to delete and rebuild anytime.
 
 ## First-time setup
 

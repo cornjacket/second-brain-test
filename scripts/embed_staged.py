@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import embed  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+VAULT_DIR = "vault"
 PARA_ROOTS = ("projects", "areas", "resources", "archive")
 
 
@@ -31,7 +32,9 @@ def staged_notes() -> list[str]:
     for line in out.splitlines():
         if not line.endswith(".md"):
             continue
-        if line.split("/", 1)[0] in PARA_ROOTS:
+        # Only embed notes under vault/<para-root>/… (e.g. vault/areas/foo.md).
+        parts = line.split("/")
+        if len(parts) >= 3 and parts[0] == VAULT_DIR and parts[1] in PARA_ROOTS:
             notes.append(line)
     return notes
 

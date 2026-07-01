@@ -37,7 +37,7 @@ git config core.hooksPath .githooks    # activate the embed hook
 pip install -r requirements.txt         # sqlite-vec (+ apsw fallback)
 
 # write a note under a PARA root, then commit — the hook writes its sidecar
-git add areas/ && git commit -m "add note"
+git add vault/areas/ && git commit -m "add note"
 
 python3 scripts/hydrate_cache.py        # build the vec0 cache from sidecars
 python3 scripts/search_vault.py "vector search"
