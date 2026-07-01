@@ -7,6 +7,15 @@ this file is the operational memory.
 > `GEMINI.md` is a symlink to this file so Claude and Gemini read identical
 > instructions.
 
+## North star — this repo is the generator's spec
+
+The eventual [`second-brain-devkit`](https://github.com/cornjacket/second-brain-devkit)
+will **generate a copy of this repo** from its structure + git history +
+`PLAN.md`/`tasks/`. So every action here is the generator's source material:
+**if it isn't recorded, the generator can't reproduce it.** Keep work fully
+traceable — schema-compliant commits (see *Git Automation*), a `tasks/` doc for
+non-trivial work, and `PLAN.md` kept in sync. Favor legibility over speed.
+
 ## Recording knowledge
 
 Durable lessons, insights, and architecture understandings belong here as **PARA
