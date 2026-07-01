@@ -12,13 +12,14 @@ file links to them and tracks their open/closed state.
 
 ### Execution order
 The repo must move to the new `vault/` structure **before** any further PARA
-notes are generated. So the remaining (note-generating) Milestone 1 work is
-gated behind the restructure:
+notes are generated. So Milestone 1 is split: the written code is **M1a** (done);
+its note-generating verification is **M1b**, gated behind the restructure:
 
-1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook)
+- **M1a** — core pipeline code (written, unverified) ✅ *(done)*
+1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook) ← NEXT
 2. **Task 0002** — markdown line-count guard *(implementation deferred)*
 3. **Task 0003** — PARA seed script (wipe & re-seed)
-4. **M1 completion** — verify embed → hydrate → search under `vault/`, commit sidecars
+4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars
 5. **Milestone 2** — registration & ingestion
 
 ## Milestone 0 — Product docs ✅
@@ -26,10 +27,11 @@ gated behind the restructure:
 - [x] `CLAUDE.md` — in-brain agent memory (`GEMINI.md` will symlink to it)
 - [x] `README.md` — overview + quickstart
 
-## Milestone 1 — Core pipeline code (written, unverified)
+## Milestone 1a — Core pipeline code (written, unverified)
 The pipeline scripts/hooks are written & committed. Activation and live
 verification are **gated behind the restructure** — we do **not** generate PARA
-notes/sidecars until the new `vault/` structure exists (see *Execution order*).
+notes/sidecars until the new `vault/` structure exists. The remaining M1 work
+continues below in **Milestone 1b**, *after* Tasks 0001–0003.
 - [x] `scripts/embedder.py` — `test` + `ollama` backends (768-dim, L2, deterministic `test`)
 - [x] `scripts/db.py` — stdlib `sqlite3` → `apsw` fallback for `sqlite-vec`
 - [x] `scripts/embed_staged.py` — pre-commit embed of staged PARA notes
@@ -59,9 +61,9 @@ notes/sidecars until the new `vault/` structure exists (see *Execution order*).
       re-seeded for clean, deterministic pipeline tests. Depends on Task 0001.
       Full spec: [`tasks/0003-para-seed-script.md`](tasks/0003-para-seed-script.md)
 
-## M1 completion — activation & verification (after Tasks 0001–0003)
-Now that the `vault/` structure exists and is seedable, generate and verify the
-working brain.
+## Milestone 1b — verification & sidecar commit (after Tasks 0001–0003)
+Continuation of Milestone 1a. Now that the `vault/` structure exists and is
+seedable, generate and verify the working brain.
 - [ ] Verify stage 1 — commit a note under `vault/` → hook writes & stages its `.embed.json` sidecar; re-embed → clean diff (deterministic `test`)
 - [ ] Verify stages 2–3 — `pip install apsw`; `hydrate_cache.py` builds `data/brain.db`; `search_vault.py` returns ranked rows
 - [ ] Commit the generated sidecars (the verified, working brain)
