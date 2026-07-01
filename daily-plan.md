@@ -1,14 +1,21 @@
-# Daily plan — 2026-06-30
+# Daily plan — 2026-07-01
 
-Drive **second-brain-test** to a working core pipeline. PLAN.md is the canonical tracker; this is just the day's shape.
+**Focus:** Milestone 2 — registration & ingestion. The pipeline plumbing is proven
+(M1b), so wire the brain into a target project and then eye the devkit.
 
-- Re-orient: skim PLAN.md, the `scripts/` pipeline, and SPEC.md invariants before touching code.
-- Finish Milestone 1: activate the embed hook + symlink, then verify the full embed → hydrate → search loop end-to-end and commit the generated sidecars.
-- Stretch (if time): start Milestone 2 — `register.py` injects an idempotent brain block into a target repo; smoke-test ingestion.
-- Respect invariants: one embedder for notes + queries, no hand-edited sidecars, local-first only.
-- Known blocker: real semantic-quality check needs the `ollama` backend (unavailable here); `test` backend proves plumbing only.
+- Build `scripts/register.py` — inject an idempotent managed block into a target
+  repo's `CLAUDE.md` pointing at this brain.
+- Verify idempotency: re-running refreshes the block, never duplicates it.
+- Ingestion smoke test: record a note via the registered flow → `search_vault.py`
+  finds it.
+- Stretch: scaffold `devkit/` now that this repo is a known-good oracle to diff against.
+- Watch: semantic validation stays blocked until an Ollama backend is available
+  (the `test` backend only proves plumbing).
 
 ```
-Warm-up ──> M1: activate + verify pipeline ──> commit sidecars ──> [stretch] M2: register + ingest
- reorient        embed → hydrate → search          working brain        idempotent block
+ done ▸ 0001 vault/ · 0002 guard · 0003 seed · M1b plumbing ✅
+                              │
+ today ▸ M2: register.py → verify idempotent → ingest smoke test
+                              │
+                    stretch ▸ devkit/ scaffold (reproduce this reference)
 ```
