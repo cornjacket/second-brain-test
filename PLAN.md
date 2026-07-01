@@ -19,8 +19,8 @@ its note-generating verification is **M1b**, gated behind the restructure:
 1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook) ✅ *(done)*
 2. **Task 0002** — markdown line-count guard ✅ *(primary done; optional live hook deferred)*
 3. **Task 0003** — PARA seed script (wipe & re-seed) ✅ *(done)*
-4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars ← NEXT
-5. **Milestone 2** — registration & ingestion
+4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars ✅ *(plumbing done; semantic validation still pending Ollama)*
+5. **Milestone 2** — registration & ingestion ← NEXT
 
 ## Milestone 0 — Product docs ✅
 - [x] `SPEC.md` — canonical product spec (PARA, sidecar schema, embedding contract, stage contracts, `register`, runtime, safety, roadmap)
@@ -63,12 +63,13 @@ continues below in **Milestone 1b**, *after* Tasks 0001–0003.
       Chose Option A (commit both `seeds/` and live `vault/`). Guardrail-tested.
       Full spec: [`tasks/0003-para-seed-script.md`](tasks/0003-para-seed-script.md)
 
-## Milestone 1b — verification & sidecar commit (after Tasks 0001–0003)
+## Milestone 1b — verification & sidecar commit ✅ (after Tasks 0001–0003)
 Continuation of Milestone 1a. Now that the `vault/` structure exists and is
 seedable, generate and verify the working brain.
-- [ ] Verify stage 1 — commit a note under `vault/` → hook writes & stages its `.embed.json` sidecar; re-embed → clean diff (deterministic `test`)
-- [ ] Verify stages 2–3 — `pip install apsw`; `hydrate_cache.py` builds `data/brain.db`; `search_vault.py` returns ranked rows
-- [ ] Commit the generated sidecars (the verified, working brain)
+- [x] Verify stage 1 — hook writes & stages `.embed.json` sidecars for staged `vault/` notes (proven in the Task 0002 temp-repo test); re-embed → clean diff (deterministic `test`)
+- [x] Verify stages 2–3 — `apsw` installed; `hydrate_cache.py` builds `data/brain.db` (4 notes); `search_vault.py` returns ranked rows
+- [x] Commit the generated sidecars (the working brain)
+- [ ] **Semantic validation still pending** — the `test` backend proves plumbing only (distances ≈ 1.0, non-semantic). Real ranking needs `SECOND_BRAIN_EMBEDDER=ollama` (blocked: no Ollama here) — see *Semantic validation* below.
 
 ## Milestone 2 — Registration & ingestion
 - [ ] `scripts/register.py` — inject an idempotent managed block into a target project's `CLAUDE.md` pointing at this brain
