@@ -72,6 +72,14 @@ seedable, generate and verify the working brain.
 - [x] Commit the generated sidecars (the working brain)
 - [ ] **Semantic validation still pending** — the `test` backend proves plumbing only (distances ≈ 1.0, non-semantic). Real ranking needs `SECOND_BRAIN_EMBEDDER=ollama` (blocked: no Ollama here) — see *Semantic validation* below.
 
+## Task 0004 — Sidecar policy & test tiers ✅ *(primary)*
+- [x] Live-vault sidecars are **derived + git-ignored**; only deterministic
+      `tests/fixtures/vault/` sidecars are committed. Added sidecar `type` field,
+      `scripts/self_test.py` (structural tier), and `tests/README.md` (two-tier
+      strategy). Golden pinned to `test`. `git rm`'d the 4 M1b sidecars.
+- [ ] *(deferred)* Enforce `type` in hydrate/search; implement the semantic
+      (Ollama) E2E tier. Full spec: [`tasks/0004-sidecar-policy-and-test-tiers.md`](tasks/0004-sidecar-policy-and-test-tiers.md)
+
 ## Milestone 2 — Registration & ingestion ✅
 - [x] `scripts/register.py` — injects an idempotent managed block (`<!-- second-brain:begin/end -->`) into a target project's `CLAUDE.md` pointing at this brain
 - [x] Verify idempotency — re-run refreshes in place (added → refreshed), byte-identical on repeat, preserves existing content, creates `CLAUDE.md` if missing

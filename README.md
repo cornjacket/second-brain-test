@@ -14,33 +14,54 @@ vector sidecar in sync, which hydrates a local vector cache for semantic search.
 
 ```
 ├── .githooks/
-│   └── pre-commit      # Embeds staged notes into .embed.json sidecars on commit
+│   └── pre-commit      # Refreshes derived vault sidecars locally + line-count guard
 ├── config/             # Optional: tool-specific configs (e.g. AI agent prompts)
-├── data/               # Derived cache — hidden/read-only from Obsidian
+├── data/               # Derived cache — git-ignored (rebuilt by hydrate)
 │   └── brain.db        # SQLite vec0 vector cache (safe to delete & rebuild)
-├── scripts/            # Local utility scripts (embedder, db, hydrate, search, register)
-│   ├── embedder.py     # Single embedding backend (test | ollama)
-│   ├── hydrate_cache.py# Builds brain.db from the .embed.json sidecars
-│   └── search_vault.py # Semantic query over the cache
+├── scripts/            # embedder, db, embed_staged, hydrate, search, register, self_test
+├── tests/
+│   ├── README.md       # Testing strategy (structural vs semantic tiers)
+│   └── fixtures/vault/ # Committed test-backend fixtures for scripts/self_test.py
 └── vault/              # The Obsidian Vault root — point Obsidian here (your Second Brain)
     ├── .obsidian/      # Native Obsidian configuration directory
-    ├── projects/       # PARA: goal-bound efforts        (+ .embed.json sidecars)
-    ├── areas/          # PARA: ongoing responsibilities
-    ├── resources/      # PARA: durable reference
-    └── archive/        # PARA: inactive
+    ├── projects/  areas/  resources/  archive/   # PARA notes
+    └── …/.<note>.embed.json   # per-note vectors — DERIVED, git-ignored (not committed)
 ```
+
+> **Committed vs derived vectors.** Live-vault sidecars are *derived* (semantic,
+> machine-dependent) and git-ignored — regenerate them locally. The **only**
+> committed sidecars are the deterministic `test`-backend fixtures under
+> `tests/fixtures/vault/`. See [tests/README.md](tests/README.md).
+
+## Pipeline
+
+The four verbs, in order:
+
+1. **Embed** — turn a note's text into a vector (a list of numbers) via
+   `scripts/embedder.py`. Written to a per-note `.embed.json` **sidecar**.
+2. **Sidecar** — the `.<note>.embed.json` file holding one note's vector. Derived
+   and git-ignored for the live vault; committed only for the test fixtures.
+3. **Hydrate** — *(re)build the queryable cache from the sidecars.*
+   `scripts/hydrate_cache.py` scans every sidecar and **wipes-and-rebuilds**
+   `data/brain.db` (the `vec0` table). "Hydrate" = pour the vectors from the
+   many small sidecar files into the single searchable database.
+4. **Search** — embed a query with the **same** backend and run a nearest-neighbour
+   lookup against `data/brain.db` (`scripts/search_vault.py`).
 
 ## Quickstart
 
 ```bash
-git config core.hooksPath .githooks    # activate the embed hook
+git config core.hooksPath .githooks    # activate the pre-commit hook
 pip install -r requirements.txt         # sqlite-vec (+ apsw fallback)
 
-# write a note under a PARA root, then commit — the hook writes its sidecar
+# write a note under a PARA root, then commit (the hook refreshes its local,
+# git-ignored sidecar; embedding runs with the configured backend)
 git add vault/areas/ && git commit -m "add note"
 
-python3 scripts/hydrate_cache.py        # build the vec0 cache from sidecars
+python3 scripts/hydrate_cache.py        # (re)build the vec0 cache from sidecars
 python3 scripts/search_vault.py "vector search"
+
+python3 scripts/self_test.py            # deterministic pipeline check (no model needed)
 ```
 
 > **Tip for Obsidian:** You will want to point Obsidian to open the `/vault`

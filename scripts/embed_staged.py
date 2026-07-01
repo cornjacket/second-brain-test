@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """Pre-commit helper: (re)generate ``.embed.json`` sidecars for staged notes.
 
-For every staged Markdown note under the PARA roots, compute its embedding and
-write the sidecar ``<dir>/.<stem>.embed.json``, then stage the sidecar so it
-lands in the same commit. This keeps the machine-readable vectors in lockstep
-with the human-authored Markdown — "write for humans, index for machines".
+For every staged Markdown note under the vault's PARA roots, compute its
+embedding and write the **derived** sidecar ``<dir>/.<stem>.embed.json``, keeping
+the machine-readable vectors in lockstep with the human-authored Markdown.
 
-See SPEC.md §5.1.
+Vault sidecars are **derived and git-ignored** — this hook refreshes them locally
+so the cache can be rebuilt; it does **not** commit them. (Only the deterministic
+``tests/fixtures/vault`` sidecars are committed — see tests/README.md.)
+
+See SPEC.md §3.1 / §5.1.
 """
 from __future__ import annotations
 
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from embedder import embed  # noqa: E402
+from embedder import backend_id, embed, is_deterministic  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = "vault"
@@ -44,20 +48,34 @@ def sidecar_path(note: str) -> Path:
     return REPO_ROOT / p.parent / f".{p.stem}.embed.json"
 
 
-def write_sidecar(note: str) -> Path:
+def sidecar_bytes(note: str) -> str:
+    """Render a note's sidecar JSON exactly as written to disk.
+
+    ``type`` stamps the embedder that produced the vector (so mixing is
+    detectable). ``embedded_at`` is added only for **non-deterministic** backends
+    — deterministic (``test``) sidecars stay byte-stable so the committed fixtures
+    and the self-test byte-diff cleanly.
+    """
     text = (REPO_ROOT / note).read_text(encoding="utf-8")
-    payload = {"source_file": note, "vector": embed(text)}
+    payload = {"source_file": note, "type": backend_id(), "vector": embed(text)}
+    if not is_deterministic():
+        payload["embedded_at"] = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    return json.dumps(payload, indent=2) + "\n"
+
+
+def write_sidecar(note: str) -> Path:
     dest = sidecar_path(note)
-    dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    dest.write_text(sidecar_bytes(note), encoding="utf-8")
     return dest
 
 
 def main() -> int:
-    notes = staged_notes()
-    for note in notes:
+    # Vault sidecars are derived + git-ignored: refresh them locally, never commit.
+    for note in staged_notes():
         dest = write_sidecar(note)
-        subprocess.run(["git", "add", str(dest)], cwd=REPO_ROOT, check=True)
-        print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)}")
+        print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} (derived, not committed)")
     return 0
 
 

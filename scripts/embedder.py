@@ -73,6 +73,30 @@ def embed_ollama(text: str) -> list[float]:
 _BACKENDS = {"test": embed_test, "ollama": embed_ollama}
 
 
+def backend_name() -> str:
+    """The active backend selector (``test`` by default)."""
+    return os.environ.get("SECOND_BRAIN_EMBEDDER", "test")
+
+
+def backend_id() -> str:
+    """Stable identifier for the active embedder, stamped into sidecars as ``type``.
+
+    ``test`` for the deterministic backend; ``ollama:<model>`` for the semantic
+    one — so a note vector always records which embedder produced it and mixing
+    backends becomes detectable.
+    """
+    name = backend_name()
+    if name == "ollama":
+        model = os.environ.get("SECOND_BRAIN_EMBED_MODEL", "nomic-embed-text")
+        return f"ollama:{model}"
+    return name
+
+
+def is_deterministic() -> bool:
+    """Only the ``test`` backend is byte-reproducible across machines/versions."""
+    return backend_name() == "test"
+
+
 def embed(text: str) -> list[float]:
     """Embed ``text`` with the configured backend, rounded for stable output."""
     backend = os.environ.get("SECOND_BRAIN_EMBEDDER", "test")

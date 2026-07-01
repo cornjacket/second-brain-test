@@ -70,16 +70,24 @@ Each note has a sibling vector sidecar in the **same directory**, named with a
 ```json
 {
   "source_file": "vault/areas/knowledge-management.md",
+  "type": "test",
   "vector": [0.0, 0.0, "... 768 floating-point numbers"]
 }
 ```
 
 - `source_file` — repo-relative POSIX path to the note.
+- `type` — the embedder that produced the vector: `test`, or `ollama:<model>` for
+  the semantic backend. Makes a mixed index detectable (see §9).
 - `vector` — exactly `EMBED_DIM` (768) floats (see §4).
-- Sidecars are **committed** (they are the expected output). The hook keeps them
-  in lockstep with the note.
+- `embedded_at` — present **only** for non-deterministic (semantic) sidecars, so
+  the committed deterministic fixtures stay byte-stable.
+- **Committed vs derived.** Live-vault sidecars are **derived and git-ignored**
+  (semantic vectors are machine/model-dependent — regenerate locally, like the
+  cache). The **only committed sidecars** are the deterministic `test`-backend
+  fixtures under `tests/fixtures/vault/`, which anchor the self-test / golden diff
+  (see `tests/README.md`).
 - `.gitattributes` sets `.*.embed.json merge=binary` — git must **never** inject
-  conflict markers into a vector, which would silently poison search.
+  conflict markers into a committed fixture vector, which would silently poison it.
 
 ### 3.2 Cache (`data/brain.db`)
 
@@ -121,10 +129,12 @@ corrupt search. The shared `scripts/embedder.py` is the single source for both.
 
 - Activated via `git config core.hooksPath .githooks`; the tracked hook lives at
   `.githooks/pre-commit` and fires for real on commit.
-- For every **staged** `*.md` under the PARA roots, it (re)computes the embedding,
-  writes the sidecar, and `git add`s it so the sidecar lands in the **same**
-  commit.
-- Implemented by `scripts/embed_staged.py`.
+- For every **staged** `*.md` under the vault's PARA roots, it (re)computes the
+  embedding and refreshes the note's **derived** sidecar locally. It does **not**
+  `git add` the sidecar — live-vault vectors are git-ignored (§3.1), so committing
+  a note keeps its vector fresh for `hydrate` without tracking it.
+- Implemented by `scripts/embed_staged.py`. The hook also runs the non-blocking
+  line-count guard (`scripts/check_line_count.py`).
 
 ### 5.2 Hydrate (`scripts/hydrate_cache.py`)
 
@@ -181,33 +191,37 @@ brain user must never be required to adopt that tooling.
 
 ```
 vault/                 # the Obsidian vault root (point Obsidian here)
-  projects/  areas/  resources/  archive/   # PARA notes + .embed.json sidecars
+  projects/  areas/  resources/  archive/   # PARA notes (+ DERIVED, git-ignored sidecars)
   .obsidian/           # Obsidian config (created when you open vault/)
 seeds/                 # canonical baseline notes; source for scripts/seed_vault.py
   projects/  areas/  resources/  archive/
 scripts/
-  embedder.py         # embedding backends (§4)
+  embedder.py         # embedding backends + backend_id/is_deterministic (§4)
   db.py               # sqlite-vec connection (§7)
-  embed_staged.py     # pre-commit embed (§5.1)
+  embed_staged.py     # pre-commit embed of derived vault sidecars (§5.1)
   hydrate_cache.py    # build cache (§5.2)
   search_vault.py     # semantic search (§5.3)
   register.py         # register a project repo (§6)
   seed_vault.py       # (re)seed vault/ from seeds/, with guarded --wipe
   check_line_count.py # pre-commit line-count guard (warn > 300 non-empty lines)
+  self_test.py        # deterministic pipeline self-test vs tests/fixtures (structural tier)
+tests/
+  README.md           # testing strategy: structural (byte-diff) vs semantic tiers
+  fixtures/vault/     # committed test-backend fixtures (the ONLY committed sidecars)
 data/                  # derived cache
   brain.db           # sqlite-vec table (gitignored)
 config/                # optional tool-specific configs
 .githooks/pre-commit
 .gitattributes       # .*.embed.json merge=binary
-.gitignore           # data/, __pycache__/, .venv/
+.gitignore           # data/, vault sidecars, __pycache__/, .venv/
 requirements.txt     # sqlite-vec, apsw
 CLAUDE.md            # in-brain agent memory (GEMINI.md symlinks to it)
 SPEC.md              # this file
 README.md
 ```
 
-- **Committed:** `seeds/` baseline, PARA notes, `.embed.json` sidecars, scripts, hook, config.
-- **Derived (gitignored):** `data/brain.db`, `__pycache__/`.
+- **Committed:** `seeds/` baseline, PARA notes, **`tests/fixtures/vault/` sidecars only**, scripts, hook, config.
+- **Derived (gitignored):** live-vault `.embed.json` sidecars, `data/brain.db`, `__pycache__/`.
 
 ## 9. Safety prohibitions
 
@@ -215,6 +229,13 @@ README.md
   local-first by design.
 - **Never** allow git conflict markers into sidecar files (`merge=binary`
   enforced for `.*.embed.json`).
+- **Never commit live-vault vectors.** Semantic sidecars are machine/model-
+  dependent; they are git-ignored and regenerated locally. Only the deterministic
+  `test`-backend `tests/fixtures/vault/` sidecars are committed.
+- **The golden reference is pinned to the `test` backend.** Never run
+  `SECOND_BRAIN_EMBEDDER=ollama` and commit the resulting fixtures — a semantic
+  (non-reproducible) vector in the committed fixtures breaks the byte-diff. The
+  `type` field records provenance so such a mixup is detectable.
 
 ## 10. Roadmap
 

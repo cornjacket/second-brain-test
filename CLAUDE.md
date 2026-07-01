@@ -26,9 +26,11 @@ notes** — there is no separate ingestion path; a note *is* the ingestion.
   (durable reference), `vault/archive/` (inactive).
 - Lowercase kebab-case filename, `.md`, with YAML frontmatter (`tags: [...]`).
   Link related notes with `[[wikilinks]]`.
-- Commit it. The pre-commit hook embeds the note into a `.embed.json` sidecar and
-  stages that sidecar into the same commit automatically — do not hand-edit
-  sidecars.
+- Commit it. On commit the hook refreshes the note's `.embed.json` sidecar
+  locally, then run `hydrate_cache.py` to update the cache. Vault sidecars are
+  **derived and git-ignored** (regenerated locally) — do not hand-edit or commit
+  them. The only committed sidecars are the deterministic fixtures under
+  `tests/fixtures/vault/`.
 
 ## Querying knowledge
 
@@ -52,6 +54,10 @@ python3 scripts/hydrate_cache.py
   deterministic plumbing; `=ollama` is real semantic search.)
 - **Never** edit a `.embed.json` sidecar by hand or let git conflict markers into
   one (`merge=binary` is enforced).
+- **Never commit live-vault vectors** (they're machine/model-dependent, derived,
+  git-ignored). Only the deterministic `test`-backend `tests/fixtures/vault/`
+  sidecars are committed — and this golden repo is **pinned to `test`**: don't
+  commit `ollama` fixtures. `scripts/self_test.py` verifies the fixtures byte-diff.
 - **Never** add a cloud vector store. This brain is local-first.
 - The cache (`data/brain.db`) is derived — safe to delete and rebuild anytime.
 
