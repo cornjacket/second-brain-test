@@ -113,11 +113,18 @@ the right primary mechanism for this repo, which already ships a
 - `README.md` (500 lines) and `tasks/*.md` (500 lines) → no warning.
 - Blank/whitespace-only lines are not counted; threshold is strict `> 300`.
 
+### Confirmed decisions (user)
+- **Skip the "instant" PostToolUse hook** — user chose not to add the live
+  in-session version; the commit-time pre-commit guard is sufficient. Not just
+  deferred: intentionally skipped for now.
+- **`CLAUDE.md` stays in scope** — we *do* want to be warned if `CLAUDE.md` grows
+  too big. We may later give `CLAUDE.md` its own (different) threshold, but the
+  current 300-line rule applies to it for now.
+
 ### Remaining (optional, opt-in later)
 - `scripts/install_line_guard_hook.py` + the PostToolUse hook in
-  `.claude/settings.json` for live in-session feedback. Left uninstalled because
-  it changes harness settings and needs user-present trust approval. The
-  pre-commit guard already gives full, editor-agnostic coverage.
+  `.claude/settings.json` for live in-session feedback. Not planned unless the
+  user later opts in.
 
 ## Notes / risks
 
