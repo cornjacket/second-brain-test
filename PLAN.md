@@ -20,7 +20,8 @@ its note-generating verification is **M1b**, gated behind the restructure:
 2. **Task 0002** — markdown line-count guard ✅ *(primary done; optional live hook deferred)*
 3. **Task 0003** — PARA seed script (wipe & re-seed) ✅ *(done)*
 4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars ✅ *(plumbing done; semantic validation still pending Ollama)*
-5. **Milestone 2** — registration & ingestion ← NEXT
+5. **Milestone 2** — registration & ingestion ✅ *(done)*
+6. **→ devkit G1** — brain core is complete; generator work is now unblocked (cross-repo) ← NEXT
 
 ## Milestone 0 — Product docs ✅
 - [x] `SPEC.md` — canonical product spec (PARA, sidecar schema, embedding contract, stage contracts, `register`, runtime, safety, roadmap)
@@ -71,11 +72,11 @@ seedable, generate and verify the working brain.
 - [x] Commit the generated sidecars (the working brain)
 - [ ] **Semantic validation still pending** — the `test` backend proves plumbing only (distances ≈ 1.0, non-semantic). Real ranking needs `SECOND_BRAIN_EMBEDDER=ollama` (blocked: no Ollama here) — see *Semantic validation* below.
 
-## Milestone 2 — Registration & ingestion
-- [ ] `scripts/register.py` — inject an idempotent managed block into a target project's `CLAUDE.md` pointing at this brain
-- [ ] Verify idempotency (re-run refreshes the block, never duplicates)
-- [ ] Ingestion smoke test — record a note via the registered flow → `search_vault.py` finds it
-- [ ] Commit
+## Milestone 2 — Registration & ingestion ✅
+- [x] `scripts/register.py` — injects an idempotent managed block (`<!-- second-brain:begin/end -->`) into a target project's `CLAUDE.md` pointing at this brain
+- [x] Verify idempotency — re-run refreshes in place (added → refreshed), byte-identical on repeat, preserves existing content, creates `CLAUDE.md` if missing
+- [x] Ingestion smoke test — a new PARA note → embed → hydrate → `search_vault.py` returns it as the top hit (0.0000 distance, deterministic `test` backend)
+- [x] Commit
 
 ## Later (roadmap; see `SPEC.md` §10)
 - [ ] Frontmatter/tag extraction into queryable cache columns
