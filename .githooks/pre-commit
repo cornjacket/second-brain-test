@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# Second Brain pre-commit hook — keep machine vectors in sync with human notes.
-# Regenerates `.embed.json` sidecars for staged PARA notes and stages them into
-# the same commit. See scripts/embed_staged.py and SPEC.md §5.1.
+# Second Brain pre-commit hook.
+#  1. Regenerate `.embed.json` sidecars for staged PARA notes and stage them into
+#     the same commit (scripts/embed_staged.py, SPEC.md §5.1).
+#  2. Warn — never block — when a staged Markdown note exceeds 300 non-empty lines
+#     (scripts/check_line_count.py, Task 0002). Excludes README.md and tasks/.
 set -euo pipefail
-python3 "$(git rev-parse --show-toplevel)/scripts/embed_staged.py"
+ROOT="$(git rev-parse --show-toplevel)"
+
+python3 "$ROOT/scripts/embed_staged.py"
+
+staged_md="$(git diff --cached --name-only --diff-filter=ACM -- '*.md')"
+if [ -n "$staged_md" ]; then
+  # shellcheck disable=SC2086  # intentional word-split; note paths have no spaces
+  python3 "$ROOT/scripts/check_line_count.py" $staged_md || true
+fi

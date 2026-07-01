@@ -1,17 +1,18 @@
 ---
 id: 0002
 title: Markdown line-count guard — warn when a note exceeds 300 non-empty lines
-status: open
+status: done-primary
 priority: after-0001
-deferred: true
 depends_on: 0001
 tags: [tooling, hooks, claude-md, markdown, dx]
 ---
 
 # Task 0002 — Markdown line-count guard
 
-> **Implementation deferred.** This document captures intent and design only. Do
-> not implement until explicitly prioritized. Runs **after** task 0001.
+> **Status: primary mechanism implemented.** `scripts/check_line_count.py` +
+> the non-blocking pre-commit guard are live and tested. The **optional**
+> PostToolUse live-feedback hook is intentionally **not** installed yet (it
+> mutates `.claude/settings.json` and wants hook-trust approval) — see below.
 
 ## Goal
 
@@ -92,20 +93,31 @@ the right primary mechanism for this repo, which already ships a
 - An idempotent installer (`scripts/install_line_guard_hook.py`, same managed-
   block pattern as the planned `register.py`) can add/refresh this hook config.
 
-## Acceptance criteria (when implemented)
+## Acceptance criteria
 
-- [ ] `scripts/check_line_count.py` counts non-empty lines and flags files with
+- [x] `scripts/check_line_count.py` counts non-empty lines and flags files with
       > 300; respects the `README.md` and `tasks/` exclusions.
-- [ ] The pre-commit path warns (without blocking) when a staged in-scope `.md`
+- [x] The pre-commit path warns (without blocking) when a staged in-scope `.md`
       exceeds 300 non-empty lines, however the file was edited.
-- [ ] Editing `README.md` or any file under `tasks/` never triggers the warning,
+- [x] Editing `README.md` or any file under `tasks/` never triggers the warning,
       regardless of length.
-- [ ] If the optional PostToolUse hook is installed, editing an in-scope `.md`
-      over threshold surfaces exactly one emoji-led nudge per edit.
-- [ ] The guard never modifies/splits the offending file unless the user
-      explicitly asks.
-- [ ] Whichever wiring is installed is set up by an idempotent script (re-running
-      refreshes, never duplicates).
+- [ ] *(optional, not installed)* If the PostToolUse hook is installed, editing an
+      in-scope `.md` over threshold surfaces exactly one emoji-led nudge per edit.
+- [x] The guard never modifies/splits the offending file — the script only prints.
+- [x] The pre-commit wiring needs no separate installer (it lives in the existing
+      `.githooks/pre-commit`); an idempotent installer is only needed for the
+      optional hook, which is deferred.
+
+### Verified (temp-repo integration test)
+- 353-non-empty-line note → single `📏` warning; **commit still succeeds**.
+- `README.md` (500 lines) and `tasks/*.md` (500 lines) → no warning.
+- Blank/whitespace-only lines are not counted; threshold is strict `> 300`.
+
+### Remaining (optional, opt-in later)
+- `scripts/install_line_guard_hook.py` + the PostToolUse hook in
+  `.claude/settings.json` for live in-session feedback. Left uninstalled because
+  it changes harness settings and needs user-present trust approval. The
+  pre-commit guard already gives full, editor-agnostic coverage.
 
 ## Notes / risks
 

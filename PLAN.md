@@ -17,8 +17,8 @@ its note-generating verification is **M1b**, gated behind the restructure:
 
 - **M1a** — core pipeline code (written, unverified) ✅ *(done)*
 1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook) ✅ *(done)*
-2. **Task 0002** — markdown line-count guard ← NEXT
-3. **Task 0003** — PARA seed script (wipe & re-seed)
+2. **Task 0002** — markdown line-count guard ✅ *(primary done; optional live hook deferred)*
+3. **Task 0003** — PARA seed script (wipe & re-seed) ← NEXT
 4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars
 5. **Milestone 2** — registration & ingestion
 
@@ -47,12 +47,13 @@ continues below in **Milestone 1b**, *after* Tasks 0001–0003.
       stale paths. **Gates all further note generation.**
       Full spec: [`tasks/0001-migrate-to-vault-rooted-layout.md`](tasks/0001-migrate-to-vault-rooted-layout.md)
 
-## Task 0002 — Markdown line-count guard (after 0001; deferred)
-- [ ] Warn (don't block, don't auto-edit) when an in-scope `.md` exceeds 300
-      non-empty lines, nudging to segment it. Excludes `README.md` and `tasks/`.
-      Primary: pre-commit check (catches Obsidian/any editor); optional PostToolUse
-      hook for live feedback. Both deterministic / zero-token. Runs **after** the
-      0001 restructure; **implementation deferred.**
+## Task 0002 — Markdown line-count guard ✅ *(primary)*
+- [x] `scripts/check_line_count.py` warns (don't block, don't auto-edit) when an
+      in-scope `.md` exceeds 300 non-empty lines. Excludes `README.md` and
+      `tasks/`. Wired into `.githooks/pre-commit` (editor-agnostic, deterministic,
+      zero-token) and verified via temp-repo integration test.
+- [ ] *(optional, deferred)* PostToolUse live-feedback hook + installer — left
+      uninstalled (mutates `.claude/settings.json`, wants trust approval).
       Full spec: [`tasks/0002-markdown-line-count-guard.md`](tasks/0002-markdown-line-count-guard.md)
 
 ## Task 0003 — PARA seed script (wipe & re-seed)
