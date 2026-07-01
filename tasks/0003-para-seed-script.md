@@ -1,13 +1,19 @@
 ---
 id: 0003
 title: PARA seed script — wipe & re-seed the vault from a canonical seed set
-status: open
+status: done
 priority: after-0001
 depends_on: 0001
 tags: [tooling, seeding, vault, testing]
 ---
 
 # Task 0003 — PARA seed script (wipe & re-seed)
+
+> **Status: done.** `seeds/` holds the canonical baseline; `scripts/seed_vault.py`
+> seeds/resets `vault/` from it. Chose **Option A** (commit both `seeds/` source
+> and the live `vault/` notes). Verified: idempotent seed keeps git clean; `--wipe`
+> is a dry run unless `--force`; a wipe removes only PARA `*.md`/`.embed.json` and
+> leaves `.obsidian/`, `config/`, `data/`, `.gitkeep`, and non-note files intact.
 
 ## Goal
 
@@ -65,14 +71,17 @@ golden reference).
 
 ## Acceptance criteria
 
-- [ ] `seeds/` holds the canonical PARA seed notes (relocated from the old root
-      dirs as part of / alongside Task 0001).
-- [ ] `python3 scripts/seed_vault.py` populates `vault/<para>/` from `seeds/`.
-- [ ] `python3 scripts/seed_vault.py --wipe` clears the seeded notes + sidecars
-      from `vault/` first, then re-seeds — leaving a clean, deterministic tree.
-- [ ] Wipe never touches `.obsidian/`, `config/`, `data/`, or non-note files.
-- [ ] After `--wipe` + re-seed + hydrate, `search_vault.py` returns the seeded
-      notes (clean end-to-end from a reset state).
+- [x] `seeds/` holds the canonical PARA seed notes (copied from the current
+      `vault/` notes — Option A).
+- [x] `python3 scripts/seed_vault.py` populates `vault/<para>/` from `seeds/`
+      (idempotent; leaves git clean when already in sync).
+- [x] `python3 scripts/seed_vault.py --wipe --force` clears the seeded notes +
+      sidecars from `vault/` first, then re-seeds — deterministic roundtrip.
+      (`--wipe` alone is a safe dry run.)
+- [x] Wipe never touches `.obsidian/`, `config/`, `data/`, `.gitkeep`, or
+      non-note files (guardrail-tested).
+- [ ] End-to-end `--wipe` → re-seed → **hydrate** → `search_vault.py` returns the
+      seeded notes — deferred to **M1b** (needs the deps installed + a hydrate run).
 
 ## Notes / risks
 

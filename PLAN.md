@@ -18,8 +18,8 @@ its note-generating verification is **M1b**, gated behind the restructure:
 - **M1a** — core pipeline code (written, unverified) ✅ *(done)*
 1. **Task 0001** — migrate to the `vault/`-rooted layout (+ activate hook) ✅ *(done)*
 2. **Task 0002** — markdown line-count guard ✅ *(primary done; optional live hook deferred)*
-3. **Task 0003** — PARA seed script (wipe & re-seed) ← NEXT
-4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars
+3. **Task 0003** — PARA seed script (wipe & re-seed) ✅ *(done)*
+4. **M1b** — verify embed → hydrate → search under `vault/`, commit sidecars ← NEXT
 5. **Milestone 2** — registration & ingestion
 
 ## Milestone 0 — Product docs ✅
@@ -56,10 +56,11 @@ continues below in **Milestone 1b**, *after* Tasks 0001–0003.
       uninstalled (mutates `.claude/settings.json`, wants trust approval).
       Full spec: [`tasks/0002-markdown-line-count-guard.md`](tasks/0002-markdown-line-count-guard.md)
 
-## Task 0003 — PARA seed script (wipe & re-seed)
-- [ ] `scripts/seed_vault.py` copies canonical seed notes from a `seeds/` source
-      into `vault/<para>/`, with a guarded `--wipe` so the vault can be reset and
-      re-seeded for clean, deterministic pipeline tests. Depends on Task 0001.
+## Task 0003 — PARA seed script (wipe & re-seed) ✅
+- [x] `scripts/seed_vault.py` copies canonical seed notes from the `seeds/` source
+      into `vault/<para>/`, with a guarded `--wipe` (dry run unless `--force`) so
+      the vault can be reset and re-seeded for clean, deterministic pipeline tests.
+      Chose Option A (commit both `seeds/` and live `vault/`). Guardrail-tested.
       Full spec: [`tasks/0003-para-seed-script.md`](tasks/0003-para-seed-script.md)
 
 ## Milestone 1b — verification & sidecar commit (after Tasks 0001–0003)

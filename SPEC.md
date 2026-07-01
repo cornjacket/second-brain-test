@@ -183,13 +183,17 @@ brain user must never be required to adopt that tooling.
 vault/                 # the Obsidian vault root (point Obsidian here)
   projects/  areas/  resources/  archive/   # PARA notes + .embed.json sidecars
   .obsidian/           # Obsidian config (created when you open vault/)
+seeds/                 # canonical baseline notes; source for scripts/seed_vault.py
+  projects/  areas/  resources/  archive/
 scripts/
-  embedder.py        # embedding backends (§4)
-  db.py              # sqlite-vec connection (§7)
-  embed_staged.py    # pre-commit embed (§5.1)
-  hydrate_cache.py   # build cache (§5.2)
-  search_vault.py    # semantic search (§5.3)
-  register.py        # register a project repo (§6)
+  embedder.py         # embedding backends (§4)
+  db.py               # sqlite-vec connection (§7)
+  embed_staged.py     # pre-commit embed (§5.1)
+  hydrate_cache.py    # build cache (§5.2)
+  search_vault.py     # semantic search (§5.3)
+  register.py         # register a project repo (§6)
+  seed_vault.py       # (re)seed vault/ from seeds/, with guarded --wipe
+  check_line_count.py # pre-commit line-count guard (warn > 300 non-empty lines)
 data/                  # derived cache
   brain.db           # sqlite-vec table (gitignored)
 config/                # optional tool-specific configs
@@ -202,7 +206,7 @@ SPEC.md              # this file
 README.md
 ```
 
-- **Committed:** PARA notes, `.embed.json` sidecars, scripts, hook, config.
+- **Committed:** `seeds/` baseline, PARA notes, `.embed.json` sidecars, scripts, hook, config.
 - **Derived (gitignored):** `data/brain.db`, `__pycache__/`.
 
 ## 9. Safety prohibitions
