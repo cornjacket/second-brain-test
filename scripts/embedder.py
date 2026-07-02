@@ -1,6 +1,6 @@
 """Embedding backends for the Second Brain pipeline.
 
-Two backends, selected by the ``SECOND_BRAIN_EMBEDDER`` env var (see SPEC.md §4):
+Two backends, selected by the ``SECOND_BRAIN_EMBEDDER`` env var:
 
 - ``test`` (default): a deterministic, dependency-free pseudo-embedder. The same
   text maps to an identical 768-dim unit vector on every machine, so the golden
@@ -11,7 +11,7 @@ Two backends, selected by the ``SECOND_BRAIN_EMBEDDER`` env var (see SPEC.md §4
 
 Both return an L2-normalized list of ``EMBED_DIM`` floats. The SAME backend must
 embed both the committed note vectors and the search query — mismatched models
-produce incomparable vectors (the same-model invariant, SPEC.md §4).
+produce incomparable vectors (the same-model invariant).
 """
 from __future__ import annotations
 

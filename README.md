@@ -8,7 +8,9 @@ vector sidecar in sync, which hydrates a local vector cache for semantic search.
 > This repo is the **golden reference** for
 > [`second-brain-devkit`](https://github.com/cornjacket/second-brain-devkit) — the
 > hand-built, known-good output the generator is validated against. The
-> authoritative contract is [SPEC.md](SPEC.md); agent memory is [CLAUDE.md](CLAUDE.md).
+> authoritative design contract lives in the
+> [devkit](https://github.com/cornjacket/second-brain-devkit) (`product-spec.md`);
+> agent memory is [CLAUDE.md](CLAUDE.md).
 
 ## Layout
 
@@ -71,4 +73,5 @@ python3 scripts/self_test.py            # deterministic pipeline check (no model
 
 By default the pipeline uses a deterministic **`test`** embedder (stable,
 diffable, but not semantic). For real semantic search, run a local Ollama server
-and set `SECOND_BRAIN_EMBEDDER=ollama`. See [SPEC.md](SPEC.md) §4.
+and set `SECOND_BRAIN_EMBEDDER=ollama`. See the embedding contract (§4) in the
+[devkit](https://github.com/cornjacket/second-brain-devkit)'s `product-spec.md`.

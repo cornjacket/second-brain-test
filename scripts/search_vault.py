@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Semantic search over the vault's ``vec0`` cache (SPEC.md §5.3).
+"""Semantic search over the vault's ``vec0`` cache.
 
 Embeds the query with the SAME backend that produced the note vectors, then runs
 a cosine-distance KNN against ``data/brain.db``. Mismatched embedders yield

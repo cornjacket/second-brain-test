@@ -1,4 +1,4 @@
-"""SQLite connection with the ``sqlite-vec`` extension loaded (SPEC.md §7).
+"""SQLite connection with the ``sqlite-vec`` extension loaded.
 
 Prefers the stdlib ``sqlite3`` when its build supports loadable extensions, and
 falls back to ``apsw`` (which bundles an extension-capable SQLite) when it does

@@ -3,7 +3,7 @@
 
 Bulk-scans every sidecar in the vault and **wipes-and-rebuilds** ``data/brain.db``,
 the sqlite-vec virtual table the AI frontends query. The cache is derived state —
-safe to delete and rebuild at any time. See SPEC.md §5.2.
+safe to delete and rebuild at any time.
 """
 from __future__ import annotations
 

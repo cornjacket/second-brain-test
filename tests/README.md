@@ -58,4 +58,5 @@ Because "deterministic on the machine that made the golden" ≠ "reproducible on
 every machine that verifies it." Real neural embeddings drift in low-order float
 bits across CPU/GPU, BLAS, and model versions, so they cannot anchor a committed
 byte-diff. The `test` backend (pure SHA-256 math) is byte-identical everywhere —
-which is the entire reason it exists. See `../SPEC.md` §4 and devkit `OQ-2`.
+which is the entire reason it exists. See the embedding contract (§4) and `OQ-2`
+in the `second-brain-devkit`.

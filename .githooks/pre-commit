@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Second Brain pre-commit hook.
 #  1. Regenerate `.embed.json` sidecars for staged PARA notes and stage them into
-#     the same commit (scripts/embed_staged.py, SPEC.md §5.1).
+#     the same commit (scripts/embed_staged.py).
 #  2. Warn — never block — when a staged Markdown note exceeds 300 non-empty lines
 #     (scripts/check_line_count.py, Task 0002). Excludes README.md and tasks/.
 set -euo pipefail

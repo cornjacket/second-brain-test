@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register a project repo with this Second Brain (SPEC.md §6).
+"""Register a project repo with this Second Brain.
 
 Injects an **idempotent managed block** (begin/end markers) into a target
 project's ``CLAUDE.md``, instructing that project's agent to record durable

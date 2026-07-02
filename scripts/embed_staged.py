@@ -8,8 +8,6 @@ the machine-readable vectors in lockstep with the human-authored Markdown.
 Vault sidecars are **derived and git-ignored** — this hook refreshes them locally
 so the cache can be rebuilt; it does **not** commit them. (Only the deterministic
 ``tests/fixtures/vault`` sidecars are committed — see tests/README.md.)
-
-See SPEC.md §3.1 / §5.1.
 """
 from __future__ import annotations
 
