@@ -1,21 +1,23 @@
-# Daily plan — 2026-07-01
+# Daily plan — 2026-07-02
 
-**Focus:** Milestone 2 — registration & ingestion. The pipeline plumbing is proven
-(M1b), so wire the brain into a target project and then eye the devkit.
+**Focus:** Hold steady as the golden reference. The brain is complete through M2 +
+Task 0004; the active work has moved to `../second-brain-devkit`, which now
+regenerates a brain and diffs it against this repo. Tomorrow this repo's job is to
+be a stable, known-good diff oracle — and to absorb any prototype-first fixes the
+devkit's diff surfaces.
 
-- Build `scripts/register.py` — inject an idempotent managed block into a target
-  repo's `CLAUDE.md` pointing at this brain.
-- Verify idempotency: re-running refreshes the block, never duplicates it.
-- Ingestion smoke test: record a note via the registered flow → `search_vault.py`
-  finds it.
-- Stretch: scaffold `devkit/` now that this repo is a known-good oracle to diff against.
-- Watch: semantic validation stays blocked until an Ollama backend is available
-  (the `test` backend only proves plumbing).
+- No planned feature work — M0–M2 + Tasks 0001–0004 are done. Keep the tree stable
+  so the devkit's Mode-A generate→diff stays meaningful.
+- Reactive: if the devkit's diff surfaces a golden/template mismatch, fix it *here*
+  first (prototype-first), then let the devkit re-templatize.
+- `self_test.py` stays green — it's the structural anchor the devkit's diff leans on.
+- Parked: semantic (Ollama) validation + `type` enforcement in hydrate/search stay
+  blocked on an Ollama backend; not tomorrow's work.
 
 ```
- done ▸ 0001 vault/ · 0002 guard · 0003 seed · M1b plumbing ✅
+ brain: M0–M2 + 0001–0004 ✅  →  now the stable golden reference
                               │
- today ▸ M2: register.py → verify idempotent → ingest smoke test
+ devkit ▸ generate() + Mode-A diff  ──uses──▶  this repo as the oracle
                               │
-                    stretch ▸ devkit/ scaffold (reproduce this reference)
+ here ▸ hold steady · absorb prototype-first fixes · Ollama still parked
 ```
