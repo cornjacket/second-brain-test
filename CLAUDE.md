@@ -50,8 +50,9 @@ python3 scripts/hydrate_cache.py
 
 - **Same model for notes and queries.** Search only works if the query is
   embedded by the same backend/model as the notes. Both go through
-  `scripts/embedder.py`; do not bypass it. (`SECOND_BRAIN_EMBEDDER=test` is
-  deterministic plumbing; `=ollama` is real semantic search.)
+  `scripts/embedder.py`; do not bypass it. The backend is set once in
+  `config/embedder.toml` (`ollama` = real semantic search; `test` = deterministic
+  plumbing) and overridable per-command with `SECOND_BRAIN_EMBEDDER`.
 - **Never** edit a `.embed.json` sidecar by hand or let git conflict markers into
   one (`merge=binary` is enforced).
 - **Never commit live-vault vectors** (they're machine/model-dependent, derived,

@@ -19,9 +19,15 @@ git config core.hooksPath .githooks    # activate the embed-on-commit hook
 pip install -r requirements.txt         # sqlite-vec (+ apsw fallback)
 ```
 
-By default the pipeline uses a deterministic **`test`** embedder — stable and
-dependency-free, but *not* semantic. For real semantic search, run a local
-[Ollama](https://ollama.com) server and set `SECOND_BRAIN_EMBEDDER=ollama`.
+This brain's embedding backend is set in **`config/embedder.toml`** (override a
+single command with the `SECOND_BRAIN_EMBEDDER` env var). Two backends:
+
+- **`ollama`** — real semantic search; needs a local [Ollama](https://ollama.com)
+  server running `nomic-embed-text` (`ollama pull nomic-embed-text`).
+- **`test`** — deterministic, dependency-free plumbing; stable but *not* semantic.
+
+Notes and queries must share a backend (the same-model invariant), so this one
+switch keeps the whole brain consistent.
 
 ## Everyday use
 
