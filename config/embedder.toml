@@ -1,0 +1,12 @@
+# Default embedding backend for THIS brain.
+#
+# Read by scripts/embedder.py so the brain is usable with no environment variable.
+# The SECOND_BRAIN_EMBEDDER env var still overrides this for a single command.
+#
+#   test   — deterministic, dependency-free plumbing (no model); byte-stable.
+#            Used by the committed fixtures + self-test (which pin it explicitly).
+#   ollama — real semantic search via nomic-embed-text (needs a local Ollama).
+#
+# Notes and queries must share a backend (the same-model invariant), so this one
+# switch keeps embedding and search consistent across the whole brain.
+backend = "test"

@@ -18,9 +18,16 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import tomllib
+from functools import lru_cache
+from pathlib import Path
 
 EMBED_DIM = 768
 ROUND_NDIGITS = 6  # fixed precision -> byte-stable JSON sidecars across machines
+
+# This brain's default backend, set once in config/embedder.toml so the brain is
+# usable with no environment variable. The env var still overrides per-command.
+_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "embedder.toml"
 
 
 def _l2_normalize(vec: list[float]) -> list[float]:
@@ -73,9 +80,33 @@ def embed_ollama(text: str) -> list[float]:
 _BACKENDS = {"test": embed_test, "ollama": embed_ollama}
 
 
+@lru_cache(maxsize=1)
+def _configured_backend() -> str | None:
+    """This brain's default backend from ``config/embedder.toml`` (``None`` if unset).
+
+    Cached per process. A missing/unreadable/omitted key falls back to ``None`` so
+    the caller uses the safe ``test`` default — an old brain without the config
+    still works.
+    """
+    try:
+        with _CONFIG_PATH.open("rb") as fh:
+            backend = tomllib.load(fh).get("backend")
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    return backend or None
+
+
 def backend_name() -> str:
-    """The active backend selector (``test`` by default)."""
-    return os.environ.get("SECOND_BRAIN_EMBEDDER", "test")
+    """The active backend: env override > this brain's config > ``test`` fallback.
+
+    So a generated brain is usable out of the box (its config pins the real
+    backend) while ``SECOND_BRAIN_EMBEDDER`` still overrides for one command — the
+    devkit's self-test and CI force ``test`` this way.
+    """
+    env = os.environ.get("SECOND_BRAIN_EMBEDDER")
+    if env:
+        return env
+    return _configured_backend() or "test"
 
 
 def backend_id() -> str:
@@ -98,13 +129,13 @@ def is_deterministic() -> bool:
 
 
 def embed(text: str) -> list[float]:
-    """Embed ``text`` with the configured backend, rounded for stable output."""
-    backend = os.environ.get("SECOND_BRAIN_EMBEDDER", "test")
+    """Embed ``text`` with the active backend, rounded for stable output."""
+    backend = backend_name()
     try:
         fn = _BACKENDS[backend]
     except KeyError:
         raise SystemExit(
-            f"Unknown SECOND_BRAIN_EMBEDDER={backend!r}; "
-            f"expected one of {sorted(_BACKENDS)}."
+            f"Unknown embedder {backend!r} (from SECOND_BRAIN_EMBEDDER or "
+            f"config/embedder.toml); expected one of {sorted(_BACKENDS)}."
         )
     return [round(x, ROUND_NDIGITS) for x in fn(text)]
