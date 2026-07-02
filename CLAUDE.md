@@ -1,9 +1,8 @@
 # Second Brain — Agent Memory
 
 You are working **inside a Second Brain**: a PARA Markdown vault (for humans) plus
-a local SQLite `vec0` cache (for you). The full design contract lives in the
-`second-brain-devkit` that generated this brain (`product-spec.md`); this file is
-the operational memory.
+a local SQLite `vec0` cache (for you). The full contract is in [SPEC.md](SPEC.md);
+this file is the operational memory.
 
 > `GEMINI.md` is a symlink to this file so Claude and Gemini read identical
 > instructions.
