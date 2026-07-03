@@ -25,7 +25,9 @@ notes** — there is no separate ingestion path; a note *is* the ingestion.
   (goal-bound effort), `vault/areas/` (ongoing responsibility), `vault/resources/`
   (durable reference), `vault/archive/` (inactive).
 - Lowercase kebab-case filename, `.md`, with YAML frontmatter (`tags: [...]`).
-  Link related notes with `[[wikilinks]]`.
+  Link related notes with `[[wikilinks]]`. Start from the annotated example at
+  [`vault/templates/new-note.md`](vault/templates/new-note.md) — copy it into the
+  right PARA root and fill it in (the template dir isn't indexed).
 - Commit it. On commit the hook refreshes the note's `.embed.json` sidecar
   locally, then run `hydrate_cache.py` to update the cache. Vault sidecars are
   **derived and git-ignored** (regenerated locally) — do not hand-edit or commit
