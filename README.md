@@ -40,15 +40,18 @@ git add vault/areas/my-note.md && git commit -m "note: my-note"
 ```
 
 Filenames are lowercase kebab-case `.md` with YAML frontmatter (`tags: [...]`);
-link notes with `[[wikilinks]]`. On commit, the hook refreshes that note's local
-vector sidecar automatically.
+link notes with `[[wikilinks]]`. On commit the **pre-commit** hook embeds the note
+and the **post-commit** hook refreshes the cache — so it's searchable right away,
+no manual step.
 
-**Query knowledge** — rebuild the cache after adding/editing notes, then search:
+**Query knowledge** — just search:
 
 ```bash
-python3 scripts/hydrate_cache.py            # (re)build the cache from sidecars
 python3 scripts/search_vault.py "vector search"
 ```
+
+After a **bulk** change (e.g. `scripts/embed_vault.py`, or editing many notes at
+once), rebuild the cache manually: `python3 scripts/hydrate_cache.py`.
 
 **Self-check** (optional) — confirm the pipeline is wired correctly on your
 machine, no model needed:

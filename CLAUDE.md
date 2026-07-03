@@ -28,10 +28,12 @@ notes** — there is no separate ingestion path; a note *is* the ingestion.
   Link related notes with `[[wikilinks]]`. Start from the annotated example at
   [`vault/templates/new-note.md`](vault/templates/new-note.md) — copy it into the
   right PARA root and fill it in (the template dir isn't indexed).
-- Commit it. On commit the hook refreshes the note's `.embed.json` sidecar
-  locally, then run `hydrate_cache.py` to update the cache. Vault sidecars are
-  **derived and git-ignored** (regenerated locally) — do not hand-edit or commit
-  them. The only committed sidecars are the deterministic fixtures under
+- Commit it. That's the whole flow: the **pre-commit** hook embeds the note into
+  its `.embed.json` sidecar and the **post-commit** hook refreshes the cache, so a
+  committed note is **searchable immediately** — no manual step. (`hydrate_cache.py`
+  stays available for a manual/bulk rebuild, e.g. after `embed_vault.py`.) Vault
+  sidecars are **derived and git-ignored** (regenerated locally) — do not hand-edit
+  or commit them. The only committed sidecars are the deterministic fixtures under
   `tests/fixtures/vault/`.
 
 ## Querying knowledge
