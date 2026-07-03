@@ -57,11 +57,34 @@ machine, no model needed:
 python3 scripts/self_test.py
 ```
 
+## Query it from any project (AI skill)
+
+The point of a second brain is for an **AI to consult it while you build something
+else** — surfacing existing conventions, past decisions, and tribal knowledge
+*before* it designs. This brain ships a skill for **Claude Code / Gemini CLI** that
+does exactly that. Install it once (a symlink — nothing is copied):
+
+```bash
+python3 scripts/install_skill.py --global --apply             # every project
+python3 scripts/install_skill.py --project ~/work/app --apply  # or just one repo
+```
+
+Omit `--apply` for a dry run. After that, when you run the AI in another project it
+consults this brain automatically (it runs `skill/second-brain/query.py`, which
+searches this vault and returns the matching notes as absolute paths). The skill is
+written to trigger proactively — before proposing an architecture or convention —
+and you can also invoke it directly with `/second-brain`.
+
+- **`--global`** links into `~/.claude/skills/` (and `~/.gemini/skills/`) — all projects.
+- **`--project <path>`** links into that repo's `.claude/skills/` — opt-in, per repo.
+- Requires Ollama running (queries are embedded with it).
+
 ## Layout
 
 ```
 ├── .githooks/pre-commit   # embeds staged notes locally + line-count guard
-├── scripts/               # embedder, db, embed_staged, hydrate, search, register, self_test
+├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate, search, register, self_test, install_skill
+├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
 │   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope)
 │   └── …/.<note>.embed.json   # per-note vectors — DERIVED, git-ignored
