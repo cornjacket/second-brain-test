@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
+from update_cache import TABLE_DDL  # noqa: E402  (shared cache schema)
 
 import sqlite_vec  # noqa: E402
 
@@ -33,12 +34,7 @@ def main() -> int:
         DB_PATH.unlink()  # derived; rebuild from scratch each run
 
     db = connect(DB_PATH)
-    db.execute(
-        f"CREATE VIRTUAL TABLE notes USING vec0("
-        f"  source_file TEXT PRIMARY KEY,"
-        f"  embedding FLOAT[{EMBED_DIM}] distance_metric=cosine"
-        f")"
-    )
+    db.execute(TABLE_DDL)  # shared schema (fresh file after unlink → table is created)
 
     count = 0
     for sidecar in find_sidecars():

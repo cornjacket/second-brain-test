@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Second Brain post-commit hook: refresh the searchable cache after a commit.
 #
-# The pre-commit hook wrote/updated each staged note's `.embed.json` sidecar (the
-# embedding). This runs AFTER the commit and pours every sidecar into the SQLite
-# `vec0` cache (`data/brain.db`), so a just-committed note is **immediately
-# query-able** — the standard write flow (write note -> commit -> searchable) with
-# no manual hydrate step.
+# The pre-commit hook wrote each staged note's `.embed.json` sidecar (the
+# embedding). This runs AFTER the commit and **incrementally** updates the SQLite
+# `vec0` cache (`data/brain.db`) — upserting the notes this commit added/modified
+# and deleting the ones it removed — so a just-committed note is **immediately
+# query-able**. It touches only the changed rows, never tearing the cache down, so
+# a concurrent query is never served an empty DB.
 #
 # Post-commit runs after the commit is finalized, so a failure here never blocks or
 # undoes the commit — it only warns. Needs `sqlite-vec` (not Ollama).
 set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
-if ! python3 "$ROOT/scripts/hydrate_cache.py"; then
-  echo "second-brain: post-commit cache refresh failed — run" \
+if ! python3 "$ROOT/scripts/update_cache.py" --from-commit HEAD; then
+  echo "second-brain: post-commit cache update failed — run" \
        "'python3 scripts/hydrate_cache.py' manually to make new notes searchable." >&2
 fi

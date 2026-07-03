@@ -86,7 +86,7 @@ and you can also invoke it directly with `/second-brain`.
 
 ```
 ├── .githooks/pre-commit   # embeds staged notes locally + line-count guard
-├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate, search, register, self_test, install_skill
+├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, install_skill
 ├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
 │   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope)
