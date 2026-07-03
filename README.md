@@ -44,6 +44,23 @@ link notes with `[[wikilinks]]`. On commit the **pre-commit** hook embeds the no
 and the **post-commit** hook refreshes the cache — so it's searchable right away,
 no manual step.
 
+> **Tip — phrase a note the way you'll search for it.** Search ranks a note by how
+> close its *wording and meaning* are to your query, so a note that mirrors the
+> question you'll later ask is much easier to find. For a quick fact, lead with the
+> question **and** answer near the top:
+>
+> ```markdown
+> ---
+> tags: [ops]
+> ---
+> # Deploy rollback
+> **Q: How do I roll back a bad deploy?**
+> A: `kubectl rollout undo deployment/<name>` — reverts to the previous revision.
+> ```
+>
+> It's not that a question is special — it's that the note now matches *how you'll
+> ask*. The closer the note's language is to your future query, the higher it ranks.
+
 **Query knowledge** — just search:
 
 ```bash
