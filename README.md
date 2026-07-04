@@ -23,11 +23,35 @@ This brain's embedding backend is set in **`config/embedder.toml`** (override a
 single command with the `SECOND_BRAIN_EMBEDDER` env var). Two backends:
 
 - **`ollama`** — real semantic search; needs a local [Ollama](https://ollama.com)
-  server running `nomic-embed-text` (`ollama pull nomic-embed-text`).
+  server running `nomic-embed-text` (the default backend for a fresh brain).
 - **`test`** — deterministic, dependency-free plumbing; stable but *not* semantic.
 
 Notes and queries must share a backend (the same-model invariant), so this one
 switch keeps the whole brain consistent.
+
+### Turn on semantic search (Ollama)
+
+Real retrieval needs a local Ollama server and the embedding model. One-time:
+
+```bash
+# 1. Install Ollama — https://ollama.com (macOS: `brew install ollama`)
+# 2. Start the server (leave it running; on macOS the app starts it for you)
+ollama serve
+# 3. Pull the embedding model this brain uses
+ollama pull nomic-embed-text
+```
+
+Then confirm the brain is actually ready — deps installed, Ollama reachable, model
+pulled, and the vault↔cache in sync — with one command:
+
+```bash
+python3 scripts/doctor.py          # health + consistency report
+python3 scripts/doctor.py --repair  # ...and fix what it safely can
+```
+
+`doctor.py` exits `0` when the brain is healthy and consistent, and prints an
+actionable line for anything that isn't (Ollama down, model missing, a note not yet
+embedded, a stale cache row). Run it whenever search behaves oddly.
 
 ## Everyday use
 
@@ -70,12 +94,16 @@ python3 scripts/search_vault.py "vector search"
 After a **bulk** change (e.g. `scripts/embed_vault.py`, or editing many notes at
 once), rebuild the cache manually: `python3 scripts/hydrate_cache.py`.
 
-**Self-check** (optional) — confirm the pipeline is wired correctly on your
-machine, no model needed:
+**Self-check** (optional) — two complementary checks:
 
 ```bash
-python3 scripts/self_test.py
+python3 scripts/self_test.py   # is the embed pipeline wired correctly? (no model)
+python3 scripts/doctor.py      # is the brain ready & consistent? (deps, Ollama, cache)
 ```
+
+`self_test.py` proves the plumbing reproduces byte-for-byte with no model; `doctor.py`
+checks the live runtime (Ollama up, model pulled) and that the vault, sidecars, and
+cache all agree — add `--repair` to fix drift.
 
 ## Query it from any project (AI skill)
 
@@ -130,7 +158,7 @@ hard-won context. Do this proactively, before proposing a design.
 
 ```
 ├── .githooks/pre-commit   # embeds staged notes locally + line-count guard
-├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, install_skill
+├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill
 ├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
 │   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope)
