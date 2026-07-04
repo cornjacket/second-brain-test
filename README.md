@@ -187,6 +187,32 @@ design — notes are still written through the git-committed vault flow. Require
 Ollama running, like the skill. This is **local-only**: a browser (claude.ai) can't
 reach a local stdio server, so web chat isn't covered.
 
+**Verify it works (without Claude Desktop).** An MCP server talks JSON-RPC over
+stdin/stdout, so you exercise it with a small client rather than by running it and
+typing. Save this as `mcp_smoke.py`, set the absolute path, and `python3 mcp_smoke.py`:
+
+```python
+import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+SERVER = "/ABSOLUTE/PATH/TO/second-brain/scripts/mcp_server.py"
+
+async def main():
+    async with stdio_client(StdioServerParameters(command="python3", args=[SERVER])) as (r, w):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            print("tools:", [t.name for t in (await s.list_tools()).tools])
+            res = await s.call_tool("search_second_brain", {"query": "vector search", "k": 3})
+            for hit in res.structuredContent["result"]:
+                print(f"  {hit['distance']:.4f}  {hit['source_file']}")
+
+asyncio.run(main())
+```
+
+You should see both tool names and a few ranked note paths. If the client can't
+handshake, something is writing to stdout — the server keeps it clean on purpose.
+
 ## Layout
 
 ```
