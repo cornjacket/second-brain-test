@@ -45,6 +45,22 @@ class _Conn:
         self._raw.close()
 
 
+def _tune(conn: _Conn) -> _Conn:
+    """Apply the concurrency PRAGMAs (OQ-5 layer 1), set per connection.
+
+    ``journal_mode=WAL`` lets many readers and the single writer run concurrently
+    (a query no longer blocks — or is blocked by — a cache write). ``busy_timeout``
+    makes a contended open **wait** briefly rather than fail immediately: SQLite's
+    default timeout is 0, so without this a reader hitting a mid-write DB errors
+    with ``SQLITE_BUSY`` instead of retrying. WAL is persisted on the DB file;
+    busy_timeout is a per-connection setting — both are re-applied on every open so
+    a freshly-(re)built cache is always tuned.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")  # 5s
+    return conn
+
+
 def connect(path) -> _Conn:
     """Open ``path`` with sqlite-vec loaded, via stdlib sqlite3 or apsw."""
     path = str(path)
@@ -55,7 +71,7 @@ def connect(path) -> _Conn:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
-        return _Conn(conn, "sqlite3")
+        return _tune(_Conn(conn, "sqlite3"))
 
     try:
         import apsw
@@ -69,4 +85,4 @@ def connect(path) -> _Conn:
     conn.enableloadextension(True)
     conn.loadextension(sqlite_vec.loadable_path())
     conn.enableloadextension(False)
-    return _Conn(conn, "apsw")
+    return _tune(_Conn(conn, "apsw"))
