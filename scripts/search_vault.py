@@ -21,25 +21,36 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = REPO_ROOT / "data" / "brain.db"
 
 
+def search(query: str, k: int = 5) -> list[tuple[str, float]]:
+    """Cosine-distance KNN of ``query`` against the vault cache.
+
+    Returns ``(source_file, distance)`` rows, nearest first. This is the one shared
+    search implementation — the CLI ``main()`` and the MCP server both call it, so a
+    long-lived server never shells out to itself. Embeds with the brain's configured
+    backend (the same-model invariant with the stored note vectors).
+    """
+    if not DB_PATH.exists():
+        raise SystemExit("cache missing; run scripts/hydrate_cache.py first")
+
+    db = connect(DB_PATH)
+    try:
+        qvec = embed(query)
+        return list(db.execute(
+            "SELECT source_file, distance FROM notes "
+            "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+            (sqlite_vec.serialize_float32(qvec), k),
+        ))
+    finally:
+        db.close()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Semantic search over the vault.")
     ap.add_argument("query", help="natural-language search query")
     ap.add_argument("-k", "--top-k", type=int, default=5)
     args = ap.parse_args()
 
-    if not DB_PATH.exists():
-        raise SystemExit("cache missing; run scripts/hydrate_cache.py first")
-
-    db = connect(DB_PATH)
-    qvec = embed(args.query)
-    rows = list(db.execute(
-        "SELECT source_file, distance FROM notes "
-        "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-        (sqlite_vec.serialize_float32(qvec), args.top_k),
-    ))
-    db.close()
-
-    for source_file, distance in rows:
+    for source_file, distance in search(args.query, args.top_k):
         print(f"{distance:.4f}  {source_file}")
     return 0
 

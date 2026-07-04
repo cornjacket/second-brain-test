@@ -154,11 +154,44 @@ hard-won context. Do this proactively, before proposing a design.
 <!-- second-brain:end -->
 ```
 
+## Use from Claude Desktop (MCP)
+
+The skill above covers any client that can run a shell command (Claude Code, Gemini
+CLI). **Claude Desktop can't** — it reaches tools only over [MCP](https://modelcontextprotocol.io).
+For that one case this brain ships an optional **MCP server** (`scripts/mcp_server.py`)
+exposing the same read-only search over stdio. It's a thin wrapper over this brain's
+own embed + search, so results match the skill exactly.
+
+```bash
+pip install -r requirements-mcp.txt   # optional — only for the Desktop path
+```
+
+Then point Claude Desktop at it by adding this to its config
+(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS), using
+**absolute** paths and restarting the app:
+
+```json
+{
+  "mcpServers": {
+    "second-brain": {
+      "command": "python3",
+      "args": ["/ABSOLUTE/PATH/TO/second-brain/scripts/mcp_server.py"]
+    }
+  }
+}
+```
+
+It exposes two tools: `search_second_brain(query, k)` → matching notes (absolute
+paths + distance) and `get_note(source_file)` → a note's Markdown. Read-only by
+design — notes are still written through the git-committed vault flow. Requires
+Ollama running, like the skill. This is **local-only**: a browser (claude.ai) can't
+reach a local stdio server, so web chat isn't covered.
+
 ## Layout
 
 ```
 ├── .githooks/pre-commit   # embeds staged notes locally + line-count guard
-├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill
+├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill, mcp_server
 ├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
 │   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope)

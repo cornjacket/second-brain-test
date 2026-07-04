@@ -1,0 +1,11 @@
+# Optional dependency — ONLY for the Claude Desktop (MCP) interface.
+#
+# The core embed/search/CLI/skill flow does not need this; keep it out of the base
+# requirements.txt so the plumbing and CI stay minimal (stdlib + sqlite-vec + apsw).
+# Install only if you want to reach the brain from Claude Desktop:
+#
+#   pip install -r requirements-mcp.txt
+#
+# Provides scripts/mcp_server.py's `from mcp.server.fastmcp import FastMCP`.
+# The FastMCP API lives in the official SDK from 1.2 on; needs Python >= 3.10.
+mcp>=1.2
