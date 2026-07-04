@@ -41,8 +41,17 @@ DB_PATH = BRAIN / "data" / "brain.db"
 
 mcp = FastMCP("second-brain")
 
+# structured_output=False on every tool — a deliberate compatibility choice. These
+# functions have typed returns (``-> list[dict]`` / ``-> str``), so modern FastMCP
+# would auto-advertise an ``outputSchema`` ("structured output", a newer MCP feature).
+# Claude Desktop's embedded MCP client (as of 2026-07-04) predates that field and
+# silently DROPS any tool carrying it — the connector then shows "no tools available"
+# and the model can't call it. Disabling structured output makes each tool a classic
+# text-output tool every client accepts (the return still reaches the model as a JSON
+# text block). Revisit if/when Desktop's MCP client gains outputSchema support.
 
-@mcp.tool()
+
+@mcp.tool(structured_output=False)
 def search_second_brain(query: str, k: int = 5) -> list[dict]:
     """Search the personal second-brain for notes relevant to a natural-language query.
 
@@ -58,7 +67,7 @@ def search_second_brain(query: str, k: int = 5) -> list[dict]:
     ]
 
 
-@mcp.tool()
+@mcp.tool(structured_output=False)
 def get_note(source_file: str) -> str:
     """Return the Markdown of a note surfaced by ``search_second_brain``.
 

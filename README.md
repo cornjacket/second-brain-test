@@ -160,39 +160,71 @@ The skill above covers any client that can run a shell command (Claude Code, Gem
 CLI). **Claude Desktop can't** — it reaches tools only over [MCP](https://modelcontextprotocol.io).
 For that one case this brain ships an optional **MCP server** (`scripts/mcp_server.py`)
 exposing the same read-only search over stdio. It's a thin wrapper over this brain's
-own embed + search, so results match the skill exactly.
+own embed + search, so results match the skill exactly. It exposes two tools:
+`search_second_brain(query, k)` → matching notes (absolute paths + distance) and
+`get_note(source_file)` → a note's Markdown. **Read-only** (notes are written through
+the git-committed vault flow) and **local-only** (a browser like claude.ai can't
+reach a local stdio server, so web chat isn't covered).
 
-```bash
-pip install -r requirements-mcp.txt   # optional — only for the Desktop path
-```
+### Setup, step by step
 
-Then point Claude Desktop at it by adding this to its config
-(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS), using
-**absolute** paths and restarting the app:
+1. **Install Claude Desktop** — download the app from
+   [claude.ai/download](https://claude.ai/download) and sign in.
 
-```json
-{
-  "mcpServers": {
-    "second-brain": {
-      "command": "python3",
-      "args": ["/ABSOLUTE/PATH/TO/second-brain/scripts/mcp_server.py"]
-    }
-  }
-}
-```
+2. **Install the MCP dependency** (once), from this brain's root:
+   ```bash
+   pip install -r requirements-mcp.txt   # optional — only for the Desktop path
+   ```
+   Install it into the **same** Python you'll name in step 4, and make sure Ollama
+   is running (`scripts/doctor.py` verifies readiness).
 
-It exposes two tools: `search_second_brain(query, k)` → matching notes (absolute
-paths + distance) and `get_note(source_file)` → a note's Markdown. Read-only by
-design — notes are still written through the git-committed vault flow. Requires
-Ollama running, like the skill. This is **local-only**: a browser (claude.ai) can't
-reach a local stdio server, so web chat isn't covered.
+3. **Find your interpreter's absolute path.** Desktop launches the server with a
+   minimal environment, so a bare `python3` — especially a **pyenv/conda _shim_** —
+   may resolve to the wrong Python or one without `mcp`. Get the real binary:
+   ```bash
+   which python3                 # if this is a pyenv shim (…/shims/python3):
+   pyenv which python3           #   → the real binary, e.g. ~/.pyenv/versions/3.13.14/bin/python3
+   ```
+   Use that resolved path in the next step, not `python3`.
 
-**Verify it works (without Claude Desktop).** An MCP server talks JSON-RPC over
-stdin/stdout, so you exercise it with a small client rather than by running it and
-typing. Save this as `mcp_smoke.py`, set the absolute path, and `python3 mcp_smoke.py`:
+4. **Register the server.** In Claude Desktop: **Settings → Developer → Edit Config**
+   (this opens `~/Library/Application Support/Claude/claude_desktop_config.json` on
+   macOS). Add the `mcpServers` block — merge it in if the file already has other
+   top-level keys, and use **absolute** paths for both the interpreter and the server:
+   ```json
+   {
+     "mcpServers": {
+       "second-brain": {
+         "command": "/ABSOLUTE/PATH/TO/python3",
+         "args": ["/ABSOLUTE/PATH/TO/second-brain/scripts/mcp_server.py"]
+       }
+     }
+   }
+   ```
+
+5. **Restart fully** — quit with **Cmd+Q** (closing the window isn't enough) and
+   reopen, so Desktop launches the server and reads its tools.
+
+6. **Confirm the tools loaded.** Open **Customize → Connectors** (or Settings →
+   Connectors) and select **`second-brain`**. It should list `search_second_brain`
+   and `get_note`. If it says *"no tools available,"* see troubleshooting below.
+
+7. **Use it** — in a plain **Chat** (not Cowork/Code), ask something that points at
+   the tool:
+   > *Use the second-brain tool to search my notes for vector search, then summarize
+   > what you find.*
+
+   The first call shows an in-app **"Allow tool?"** prompt — approve it. Claude then
+   calls `search_second_brain`, optionally `get_note` on a hit, and answers from your
+   notes.
+
+### Verify without Claude Desktop
+
+An MCP server talks JSON-RPC over stdin/stdout, so you can exercise it with a small
+client instead of the app. Save as `mcp_smoke.py`, set the path, `python3 mcp_smoke.py`:
 
 ```python
-import asyncio
+import asyncio, json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -204,14 +236,27 @@ async def main():
             await s.initialize()
             print("tools:", [t.name for t in (await s.list_tools()).tools])
             res = await s.call_tool("search_second_brain", {"query": "vector search", "k": 3})
-            for hit in res.structuredContent["result"]:
-                print(f"  {hit['distance']:.4f}  {hit['source_file']}")
+            print(res.content[0].text)   # a JSON string of the ranked hits
 
 asyncio.run(main())
 ```
 
-You should see both tool names and a few ranked note paths. If the client can't
-handshake, something is writing to stdout — the server keeps it clean on purpose.
+You should see both tool names and a few ranked note paths.
+
+### Troubleshooting
+
+- **"This connector has no tools available."** Claude Desktop's MCP client may be
+  older than a server feature. This brain's server already avoids the known trap (it
+  disables *structured output* / `outputSchema`, which older Desktop builds silently
+  drop). If you customize the server to re-enable structured output and tools vanish,
+  that's why — set `structured_output=False` on each `@mcp.tool()` and restart.
+- **Server won't start / tools never appear.** Almost always the `command` path — a
+  shim or a Python without `mcp`. Use the absolute interpreter from step 3. Logs live
+  at `~/Library/Logs/Claude/mcp-server-second-brain.log`.
+- **Client can't handshake.** Something wrote to stdout; on stdio that's the JSON-RPC
+  channel. This server routes its own output to stderr to keep stdout clean.
+- **Empty results.** Ollama isn't running or the cache is unbuilt — run
+  `python3 scripts/doctor.py --repair`.
 
 ## Layout
 
