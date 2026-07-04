@@ -85,19 +85,46 @@ else** — surfacing existing conventions, past decisions, and tribal knowledge
 does exactly that. Install it once (a symlink — nothing is copied):
 
 ```bash
-python3 scripts/install_skill.py --global --apply             # every project
+python3 scripts/install_skill.py --global --nudge --apply      # every project
 python3 scripts/install_skill.py --project ~/work/app --apply  # or just one repo
 ```
 
-Omit `--apply` for a dry run. After that, when you run the AI in another project it
-consults this brain automatically (it runs `skill/second-brain/query.py`, which
-searches this vault and returns the matching notes as absolute paths). The skill is
-written to trigger proactively — before proposing an architecture or convention —
-and you can also invoke it directly with `/second-brain`.
+Omit `--apply` for a dry run (nothing is changed until you pass it). After that,
+when you run the AI in another project it consults this brain automatically (it
+runs `skill/second-brain/query.py`, which searches this vault and returns the
+matching notes as absolute paths). The skill is written to trigger proactively —
+before proposing an architecture or convention — and you can also invoke it
+directly with `/second-brain`.
 
-- **`--global`** links into `~/.claude/skills/` (and `~/.gemini/skills/`) — all projects.
-- **`--project <path>`** links into that repo's `.claude/skills/` — opt-in, per repo.
+- **`--global`** links the skill into `~/.claude/skills/` (and `~/.gemini/skills/`) — all projects.
+- **`--project <path>`** links it into that repo's `.claude/skills/` — opt-in, per repo.
+- **`--nudge`** (optional, recommended) adds a short *"consult the second-brain
+  before designing"* reminder to your global memory (`~/.claude/CLAUDE.md`,
+  `~/.gemini/GEMINI.md`) so the AI reaches for the brain reflexively, not only when
+  the skill's own description happens to fire. It's a marked, idempotent block —
+  safe to re-run.
 - Requires Ollama running (queries are embedded with it).
+
+**Uninstall** — remove whichever parts you named; only this brain's symlinks and
+the marked nudge block are touched, the rest of your config is left intact:
+
+```bash
+python3 scripts/install_skill.py --uninstall --global --nudge --apply
+```
+
+Prefer to add the nudge by hand instead of `--nudge`? Paste this into your global
+`~/.claude/CLAUDE.md`:
+
+```markdown
+<!-- second-brain:begin -->
+## Second brain
+
+Before designing a system, choosing conventions or naming, or answering "how do we
+do X / what did we decide about Y", consult the personal **second-brain** first
+(via the `second-brain` skill) — it holds prior decisions, conventions, and
+hard-won context. Do this proactively, before proposing a design.
+<!-- second-brain:end -->
+```
 
 ## Layout
 
