@@ -291,6 +291,25 @@ meaningless — everything routes through `scripts/embedder.py`.)
 > **Tip for Obsidian:** open the `vault/` directory as your vault root (not the
 > repo root), so Obsidian doesn't index scripts or the database as notes.
 
+### Search quality: today, and planned
+
+Today search is **dense vector only** — great for *meaning*, weaker on exact tokens
+(error codes, identifiers, rare acronyms) and very short keyword queries, and that gap
+widens as the vault grows. Two planned improvements:
+
+- **Hybrid lexical + vector search.** Add a **SQLite FTS5** (BM25 keyword) index
+  *alongside* the vector index in the same `data/brain.db`, hydrated by the same
+  commit hooks — **no new dependency, no new file**, still one derived cache. Each
+  query runs both retrievers and their rankings are merged with **Reciprocal Rank
+  Fusion** (rank-based, so incomparable cosine and BM25 scores don't have to be
+  normalized). This closes the exact-match blind spot, and because it lives in the one
+  shared search function the CLI, the AI skill, and the MCP server all benefit at once.
+- **Embedding task prefixes.** Embed notes as `search_document:` and queries as
+  `search_query:` — the asymmetric mode `nomic-embed-text` is trained for. A small,
+  principled correctness change that needs a one-time re-embed of the vault.
+
+Both are designed but not yet built; dense vector search is what runs today.
+
 ## Registering a project
 
 To have another repo deposit its learnings here, run
