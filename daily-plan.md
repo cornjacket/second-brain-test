@@ -1,26 +1,30 @@
 # Daily plan — 2026-07-06
 
-**Focus:** Serve as the **prototyping vehicle for `../second-brain-devkit`**. Every
-devkit feature is hand-built and proven *here* first (the golden), then productized
-into the devkit and diffed back against this repo. Monday's devkit work is OQ-5
-**layer 2 (in-place hydrate)** and the **MCP server v1**, so this repo hosts those
-prototypes before they're vendored.
+**Focus:** Keep serving as the **prototyping vehicle + diff oracle for
+`../second-brain-devkit`**. The weekend's features (layer 2 in-place hydrate, MCP server
+v1) were hand-built *here* first, then vendored. Monday's devkit work is CI coverage +
+`update_brain.py` (both devkit-only, not prototyped here); the next feature that *does*
+prototype here is **hybrid FTS5 search**. Stay coherent so the Mode-A diff stays honest.
 
-- Prototype-first surface: build layer 2 (in-place `hydrate_cache.py` rebuild) and a
-  live `scripts/mcp_server.py` here, confirm they behave, *then* the devkit vendors +
-  templatizes them.
-- Stay a stable, known-good **diff oracle**: keep the tree coherent so the devkit's
-  Mode-A generate→diff stays meaningful; `self_test.py` stays green.
-- Reactive: if the devkit's diff surfaces a golden/template mismatch, fix it *here*
+- **Next prototype surface: hybrid FTS5 search.** When the devkit picks up task #3,
+  build the FTS5 table in `data/brain.db` + Reciprocal Rank Fusion inside
+  `search_vault.search()` *here* first, prove it against real Ollama, then let the devkit
+  vendor + templatize. (nomic `search_document:`/`search_query:` prefixes likewise.)
+- **Stay a stable diff oracle.** Keep the tree known-good so the devkit's
+  generate→diff stays meaningful; `self_test.py` green. CI-tooling work (py_compile,
+  `check_mcp_server.py`) lives in the devkit, not here.
+- **Reactive.** If the devkit's diff surfaces a golden/template mismatch, fix it *here*
   first, then let the devkit re-templatize.
-- Ollama is live — real embed→hydrate→search + `doctor.py` exercise the semantic path
-  here when a prototype needs it.
+- **Ollama is live** — real embed→hydrate→search + `doctor.py` exercise the semantic path
+  when a prototype needs it (as they did for the MCP server).
+- **Mothball watch (G4).** As `update_brain.py` and trustworthy generation land, this
+  repo nears mothball — its role as the hand-prototyping surface winds down.
 
 ```
  role: hand-prototype → prove → hand off to the devkit
                               │
  devkit pulls:  vendor_golden.py → tests/golden → build_template → ci.py diff
                               │
- mon 07-06 ▸ prototype here: layer 2 (in-place hydrate) · mcp_server.py v1
-             then devkit vendors + diffs back against this repo
+ weekend 07-04 ✅ prototyped here: layer 2 hydrate · mcp_server.py v1 (→ vendored)
+ mon 07-06 ▸ next to prototype here: hybrid FTS5 search + RRF (task #3), on demand
 ```
