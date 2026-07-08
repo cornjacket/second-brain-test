@@ -1,28 +1,27 @@
-# Daily plan — 2026-07-07
+# Daily plan — 2026-07-08
 
-**Focus:** Stay the **prototyping surface + diff oracle** for `../second-brain-devkit`.
-Idle since 07-04 on purpose — the recent devkit work (CI coverage, `update_brain.py`, the
-design docs) is all devkit-internal and **doesn't emit into a brain**, so there was no
-"prototype here first" step. The golden comes back into play for the next **emitted**
-features. Keep the tree a clean diff oracle; mothball ([G4](../second-brain-devkit/PLAN.md))
-still nears as generation gets more trusted.
+**Focus:** Back **in play** as the prototyping surface — the devkit's next work is the
+**emitted managed-block thread** (#10 splice helper → #8 auto-linking → #9 README markers),
+which all prototype here first. Build + prove them against real Ollama, then hand off
+(vendor → template → diff). Stay a clean diff oracle; mothball still nears.
 
-- **Next to prototype here (emitted features):**
-  - the **`post-merge` sync hook** + sync helper (big-brain Approach A) once task #6 lands
-    a remote — pull → re-embed/hydrate, push-after-commit, surface merge conflicts;
-  - **hybrid FTS5 search** in `search_vault`/`hydrate`/`update_cache` (devkit task #3).
-  Build + prove them here (real Ollama), then let the devkit vendor + templatize.
-- **Stay a stable diff oracle** — keep the tree coherent so Mode-A generate→diff stays
-  meaningful; `self_test.py` green. CI-tooling (compile gate, `check_*`) lives in the
-  devkit, not here.
-- **Reactive:** if the devkit's diff surfaces a golden/template mismatch, fix it here first.
-- **Ollama is live** — exercise embed→hydrate→search + `doctor.py` when a prototype needs it.
+- **Prototype task #10 — the shared "splice a marked block" helper** in the emitted
+  `scripts/`, and **refactor this repo's `install_skill.py --nudge` onto it** (no behavior
+  change; install→idempotent→uninstall round-trip green). This is the emitted half the devkit
+  vendors + templatizes.
+- **Then start #8 auto-linking here:** canonical-body embedding (`embed_staged.py`),
+  `related_auto:` quoted-wikilink frontmatter (Obsidian graph edges), the `content_hash`
+  gate — exercise embed→hydrate→search with real Ollama to confirm no feedback-loop drift.
+- **Stay a stable diff oracle** — `self_test.py` green; fix any golden/template mismatch
+  here first. CI tooling (compile gate, `check_*`) lives in the devkit, not here.
+- Re-sequenced: the earlier "post-merge sync hook + FTS5" as the immediate next is
+  superseded — those stay queued, but the managed-block thread jumps ahead.
 
 ```
- role: hand-prototype → prove → hand off to the devkit
+ role: hand-prototype → prove (real Ollama) → hand off to the devkit
                               │
  devkit pulls:  vendor_golden.py → tests/golden → build_template → ci.py diff
                               │
- 07-04 ✅ prototyped here: layer-2 hydrate · mcp_server.py v1 (→ vendored)
- tue 07-07 ▸ next emitted features to prototype here: post-merge sync hook · FTS5 search
+ wed 07-08 ▸ prototype #10 splice helper (refactor --nudge) → start #8 auto-linking
+            (embed substance-not-metadata · related_auto frontmatter · content_hash)
 ```
