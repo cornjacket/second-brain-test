@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import backend_id, embed, is_deterministic  # noqa: E402
+from note_view import canonical_body  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = "vault"
@@ -53,9 +54,13 @@ def sidecar_bytes(note: str) -> str:
     detectable). ``embedded_at`` is added only for **non-deterministic** backends
     — deterministic (``test``) sidecars stay byte-stable so the committed fixtures
     and the self-test byte-diff cleanly.
+
+    The embedder sees the note's **canonical substance view** (body only, no
+    frontmatter — see note_view.py), so metadata never enters the vector.
     """
     text = (REPO_ROOT / note).read_text(encoding="utf-8")
-    payload = {"source_file": note, "type": backend_id(), "vector": embed(text)}
+    payload = {"source_file": note, "type": backend_id(),
+               "vector": embed(canonical_body(text))}
     if not is_deterministic():
         payload["embedded_at"] = datetime.now(timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
