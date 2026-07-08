@@ -35,6 +35,9 @@ import os
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from marked_block import has_block, remove_block, splice_block  # noqa: E402
+
 BRAIN = Path(__file__).resolve().parent.parent
 SKILL_SRC = BRAIN / "skill" / "second-brain"
 # tool -> its base config dir (skills live under <base>/skills/; memory is <base>/<file>)
@@ -53,7 +56,6 @@ NUDGE_BODY = (
     "decisions, conventions, and hard-won context. Do this proactively, before "
     "proposing a design."
 )
-NUDGE_BLOCK = f"{NUDGE_BEGIN}\n{NUDGE_BODY}\n{NUDGE_END}\n"
 
 
 def planned_links(args) -> list[tuple[str, Path]]:
@@ -123,16 +125,12 @@ def install_nudge(label: str, mem: Path, apply: bool) -> None:
         print(f"  {label}: skipped — no {mem.parent} (is the tool installed?)")
         return
     existing = mem.read_text(encoding="utf-8") if mem.exists() else ""
-    if NUDGE_BEGIN in existing:
+    if has_block(existing, NUDGE_BEGIN, NUDGE_END):
         print(f"  {label}: already present in {mem}")
         return
+    new = splice_block(existing, NUDGE_BEGIN, NUDGE_END, NUDGE_BODY)
     if apply:
-        prefix = existing
-        if prefix and not prefix.endswith("\n"):
-            prefix += "\n"
-        if prefix:
-            prefix += "\n"  # blank line before our block
-        mem.write_text(prefix + NUDGE_BLOCK, encoding="utf-8")
+        mem.write_text(new, encoding="utf-8")
         print(f"  {label}: added nudge to {mem}")
     else:
         print(f"  {label}: would add nudge to {mem}")
@@ -140,16 +138,10 @@ def install_nudge(label: str, mem: Path, apply: bool) -> None:
 
 def remove_nudge(label: str, mem: Path, apply: bool) -> None:
     text = mem.read_text(encoding="utf-8") if mem.exists() else ""
-    if NUDGE_BEGIN not in text:
+    if not has_block(text, NUDGE_BEGIN, NUDGE_END):
         print(f"  {label}: no nudge block in {mem}")
         return
-    before, _, rest = text.partition(NUDGE_BEGIN)
-    _, _, after = rest.partition(NUDGE_END)
-    before = before.rstrip("\n")
-    after = after.lstrip("\n")
-    new = before + ("\n\n" if before and after else "") + after
-    if new and not new.endswith("\n"):
-        new += "\n"
+    new = remove_block(text, NUDGE_BEGIN, NUDGE_END)
     if apply:
         mem.write_text(new, encoding="utf-8")
         print(f"  {label}: removed nudge from {mem}")
