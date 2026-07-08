@@ -9,9 +9,16 @@ Two backends, selected by the ``SECOND_BRAIN_EMBEDDER`` env var:
 - ``ollama``: real ``nomic-embed-text`` embeddings via a local Ollama server.
   This is the production path and the only one that yields meaningful search.
 
-Both return an L2-normalized list of ``EMBED_DIM`` floats. The SAME backend must
-embed both the committed note vectors and the search query — mismatched models
-produce incomparable vectors (the same-model invariant).
+Both return an L2-normalized list of ``EMBED_DIM`` floats. The SAME backend AND the
+SAME task-prefix scheme must be used on both sides of any comparison — mismatched
+models or prefixes produce incomparable vectors (the same-model invariant, extended
+to prefixes; see docs/retrieval-quality.md §1).
+
+``embed(text, task=...)`` carries the caller's role: ``"document"`` for text being
+stored/indexed (a note) and ``"query"`` for a search query. Only the ``ollama``
+backend uses it — nomic-embed-text is instruction-tuned and expects a task prefix;
+the deterministic ``test`` backend ignores it. Note↔note similarity (auto-linking)
+is the **symmetric** case: ``"document"`` on both sides.
 """
 from __future__ import annotations
 
@@ -25,6 +32,13 @@ from pathlib import Path
 EMBED_DIM = 768
 ROUND_NDIGITS = 6  # fixed precision -> byte-stable JSON sidecars across machines
 
+# nomic-embed-text task prefixes, keyed by the caller's role. Only the ``ollama``
+# backend uses these; ``test`` ignores the task (see the module docstring).
+_OLLAMA_TASK_PREFIX = {
+    "document": "search_document: ",  # text being stored/indexed (a note)
+    "query": "search_query: ",        # text being searched with (a query)
+}
+
 # This brain's default backend, set once in config/embedder.toml so the brain is
 # usable with no environment variable. The env var still overrides per-command.
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "embedder.toml"
@@ -37,8 +51,13 @@ def _l2_normalize(vec: list[float]) -> list[float]:
     return [x / norm for x in vec]
 
 
-def embed_test(text: str) -> list[float]:
-    """Deterministic, hash-seeded pseudo-embedding. Stable, not semantic."""
+def embed_test(text: str, task: str) -> list[float]:
+    """Deterministic, hash-seeded pseudo-embedding. Stable, not semantic.
+
+    ``task`` is accepted for a uniform backend signature but **ignored**: the test
+    backend is not a real model, so it has no task prefixes. This keeps the
+    committed fixtures byte-stable regardless of the caller's role.
+    """
     data = text.encode("utf-8")
     raw: list[float] = []
     counter = 0
@@ -53,14 +72,25 @@ def embed_test(text: str) -> list[float]:
     return _l2_normalize(raw)
 
 
-def embed_ollama(text: str) -> list[float]:
-    """Real embeddings via a local Ollama server (``nomic-embed-text``)."""
+def embed_ollama(text: str, task: str) -> list[float]:
+    """Real embeddings via a local Ollama server (``nomic-embed-text``).
+
+    ``nomic-embed-text`` is instruction-tuned: it expects a task prefix so that a
+    query and the document that answers it land in a shared space. ``task`` selects
+    the prefix — ``document`` for notes (and both sides of a note↔note comparison),
+    ``query`` for a search query. See docs/retrieval-quality.md §1.
+    """
     import json
     import urllib.request
 
+    try:
+        prefix = _OLLAMA_TASK_PREFIX[task]
+    except KeyError:
+        raise ValueError(f"unknown embed task {task!r}; expected one of "
+                         f"{sorted(_OLLAMA_TASK_PREFIX)}")
     host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     model = os.environ.get("SECOND_BRAIN_EMBED_MODEL", "nomic-embed-text")
-    payload = json.dumps({"model": model, "prompt": text}).encode("utf-8")
+    payload = json.dumps({"model": model, "prompt": prefix + text}).encode("utf-8")
     req = urllib.request.Request(
         f"{host}/api/embeddings",
         data=payload,
@@ -128,8 +158,14 @@ def is_deterministic() -> bool:
     return backend_name() == "test"
 
 
-def embed(text: str) -> list[float]:
-    """Embed ``text`` with the active backend, rounded for stable output."""
+def embed(text: str, task: str = "document") -> list[float]:
+    """Embed ``text`` for ``task`` with the active backend, rounded for stable output.
+
+    ``task`` is ``"document"`` (default — text being stored/indexed) or ``"query"``
+    (a search query). It only affects the semantic ``ollama`` backend (mapped to a
+    nomic task prefix); the deterministic ``test`` backend ignores it. Note↔note
+    similarity (auto-linking) uses ``"document"`` on both sides.
+    """
     backend = backend_name()
     try:
         fn = _BACKENDS[backend]
@@ -138,4 +174,4 @@ def embed(text: str) -> list[float]:
             f"Unknown embedder {backend!r} (from SECOND_BRAIN_EMBEDDER or "
             f"config/embedder.toml); expected one of {sorted(_BACKENDS)}."
         )
-    return [round(x, ROUND_NDIGITS) for x in fn(text)]
+    return [round(x, ROUND_NDIGITS) for x in fn(text, task)]

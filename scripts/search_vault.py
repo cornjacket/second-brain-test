@@ -34,7 +34,7 @@ def search(query: str, k: int = 5) -> list[tuple[str, float]]:
 
     db = connect(DB_PATH)
     try:
-        qvec = embed(query)
+        qvec = embed(query, task="query")
         return list(db.execute(
             "SELECT source_file, distance FROM notes "
             "WHERE embedding MATCH ? AND k = ? ORDER BY distance",

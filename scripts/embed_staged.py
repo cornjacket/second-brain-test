@@ -60,7 +60,7 @@ def sidecar_bytes(note: str) -> str:
     """
     text = (REPO_ROOT / note).read_text(encoding="utf-8")
     payload = {"source_file": note, "type": backend_id(),
-               "vector": embed(canonical_body(text))}
+               "vector": embed(canonical_body(text), task="document")}
     if not is_deterministic():
         payload["embedded_at"] = datetime.now(timezone.utc).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
