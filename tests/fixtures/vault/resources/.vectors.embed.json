@@ -1,6 +1,7 @@
 {
   "source_file": "tests/fixtures/vault/resources/vectors.md",
   "type": "test",
+  "content_hash": "sha256:b2e8a8de596ff72e18fc84ea86986afb8c921168d2a014dd342f3f076bd3acbe",
   "vector": [
     0.057802,
     -0.034884,

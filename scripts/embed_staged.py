@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import backend_id, embed, is_deterministic  # noqa: E402
-from note_view import canonical_body  # noqa: E402
+from note_view import canonical_body, content_hash  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = "vault"
@@ -60,6 +60,7 @@ def sidecar_bytes(note: str) -> str:
     """
     text = (REPO_ROOT / note).read_text(encoding="utf-8")
     payload = {"source_file": note, "type": backend_id(),
+               "content_hash": content_hash(text),
                "vector": embed(canonical_body(text), task="document")}
     if not is_deterministic():
         payload["embedded_at"] = datetime.now(timezone.utc).strftime(
@@ -68,17 +69,38 @@ def sidecar_bytes(note: str) -> str:
     return json.dumps(payload, indent=2) + "\n"
 
 
-def write_sidecar(note: str) -> Path:
+def write_sidecar(note: str, force: bool = False) -> tuple[Path, bool]:
+    """Write ``note``'s ``.embed.json`` sidecar; return ``(path, wrote)``.
+
+    No-op gate: if a sidecar already exists whose ``content_hash`` matches the note's
+    current substance **and** was produced by the active backend, the vector cannot have
+    changed, so skip the re-embed (with Ollama, re-embedding unchanged text would only
+    churn the sidecar with fresh floating-point noise). This is also what stops an
+    auto-linker's ``related_auto:`` frontmatter edit from triggering a re-embed — the body
+    is unchanged, so the hash is unchanged. ``force`` bypasses the gate; ``doctor
+    --repair`` uses it to rewrite even a hash-matching but corrupt sidecar.
+    """
     dest = sidecar_path(note)
+    if not force and dest.exists():
+        try:
+            prev = json.loads(dest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            prev = {}
+        text = (REPO_ROOT / note).read_text(encoding="utf-8")
+        if prev.get("type") == backend_id() and prev.get("content_hash") == content_hash(text):
+            return dest, False
     dest.write_text(sidecar_bytes(note), encoding="utf-8")
-    return dest
+    return dest, True
 
 
 def main() -> int:
     # Vault sidecars are derived + git-ignored: refresh them locally, never commit.
     for note in staged_notes():
-        dest = write_sidecar(note)
-        print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} (derived, not committed)")
+        dest, wrote = write_sidecar(note)
+        if wrote:
+            print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} (derived, not committed)")
+        else:
+            print(f"  skip (substance unchanged): {note}")
     return 0
 
 

@@ -265,7 +265,7 @@ def do_repair(st: dict) -> None:
     to_embed = ((st["notes_wo_sidecar"] | st["mixed"] | st["bad_dim"]
                  | st["unreadable"]) & st["notes"])
     for note in sorted(to_embed):
-        es.write_sidecar(note)  # uses the active backend
+        es.write_sidecar(note, force=True)  # repair must rewrite even a hash-matching sidecar
         print(f"  repair: embedded {note}")
 
     # 3. Rebuild the cache from the reconciled sidecars. hydrate wipes+rebuilds,

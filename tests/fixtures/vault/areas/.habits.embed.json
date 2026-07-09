@@ -1,6 +1,7 @@
 {
   "source_file": "tests/fixtures/vault/areas/habits.md",
   "type": "test",
+  "content_hash": "sha256:d6dd9c873951c0c9870577981cbb9bd3ba87bbc32d845b3a25061ac01f0f623f",
   "vector": [
     -0.041758,
     0.05558,

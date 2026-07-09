@@ -51,8 +51,11 @@ def main() -> int:
         return 1
     backend = backend_id()
     for note in notes:
-        dest = write_sidecar(note)
-        print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} ({backend})")
+        dest, wrote = write_sidecar(note)
+        if wrote:
+            print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} ({backend})")
+        else:
+            print(f"  skip (unchanged): {note}")
     print(f"embedded {len(notes)} note(s) with backend '{backend}' — "
           f"run scripts/hydrate_cache.py to rebuild the cache")
     return 0

@@ -20,6 +20,8 @@ that will gate re-embedding:
 """
 from __future__ import annotations
 
+import hashlib
+
 
 def _strip_frontmatter(text: str) -> str:
     """Return ``text`` with a leading YAML frontmatter block removed.
@@ -43,3 +45,17 @@ def canonical_body(text: str) -> str:
     body = body.replace("\r\n", "\n").replace("\r", "\n")
     body = body.strip("\n")
     return body + "\n" if body else ""
+
+
+def content_hash(text: str) -> str:
+    """A byte-stable fingerprint of a note's substance — its canonical body.
+
+    Returns ``sha256:<hex>``. Unlike the neural embedding vector (which differs run to
+    run and machine to machine), this hash is **identical everywhere** for the same body,
+    so it answers one question cheaply: *did the substance change since we last embedded?*
+    That lets the embed step skip notes whose body is unchanged — no wasted re-embed, and
+    no churn from a frontmatter-only edit like an auto-linker adding ``related_auto:``
+    (frontmatter is excluded from the canonical body). See docs/auto-linking.md §4.
+    """
+    digest = hashlib.sha256(canonical_body(text).encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
