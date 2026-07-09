@@ -29,8 +29,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from db import connect  # noqa: E402
 from marked_block import remove_block, splice_block  # noqa: E402
+# NB: `db` (which imports sqlite_vec) is imported lazily inside main(), so the pure
+# text helpers here (apply_links etc.) can be imported without sqlite-vec — e.g. by the
+# devkit's hermetic Obsidian-format acceptance check.
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = REPO_ROOT / "data" / "brain.db"
@@ -206,6 +208,7 @@ def main(argv: list[str]) -> int:
 
     if not DB_PATH.exists():
         raise SystemExit("cache missing; run scripts/hydrate_cache.py first")
+    from db import connect  # lazy: sqlite-vec only needed to actually read the cache
     db = connect(DB_PATH)
     try:
         neighbors = note_neighbors(db, args.top_n)
