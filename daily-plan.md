@@ -1,27 +1,27 @@
-# Daily plan — 2026-07-08
+# Daily plan — 2026-07-09
 
-**Focus:** Back **in play** as the prototyping surface — the devkit's next work is the
-**emitted managed-block thread** (#10 splice helper → #8 auto-linking → #9 README markers),
-which all prototype here first. Build + prove them against real Ollama, then hand off
-(vendor → template → diff). Stay a clean diff oracle; mothball still nears.
+**Focus:** The #10 → #8 thread was prototyped here and handed off (splice helper + full
+auto-linking: canonical-body embedding, nomic prefixes, KNN calibration, `related_auto:`
+write path, `content_hash` gate — all proven against real Ollama, then vendored → template →
+devkit CI 7/7). Next in the thread is **#9 (README markers)**; after that, seed the
+**diverse corpus (#15)** here so real semantic structure exists to tune against.
 
-- **Prototype task #10 — the shared "splice a marked block" helper** in the emitted
-  `scripts/`, and **refactor this repo's `install_skill.py --nudge` onto it** (no behavior
-  change; install→idempotent→uninstall round-trip green). This is the emitted half the devkit
-  vendors + templatizes.
-- **Then start #8 auto-linking here:** canonical-body embedding (`embed_staged.py`),
-  `related_auto:` quoted-wikilink frontmatter (Obsidian graph edges), the `content_hash`
-  gate — exercise embed→hydrate→search with real Ollama to confirm no feedback-loop drift.
-- **Stay a stable diff oracle** — `self_test.py` green; fix any golden/template mismatch
-  here first. CI tooling (compile gate, `check_*`) lives in the devkit, not here.
-- Re-sequenced: the earlier "post-merge sync hook + FTS5" as the immediate next is
-  superseded — those stay queued, but the managed-block thread jumps ahead.
+- **Prototype task #9 — the README managed block** in the golden `README.md`: HTML-comment
+  markers (`<!-- BEGIN/END generated -->`) wrapping the devkit-owned region, spliced via the
+  shared helper so a user's own preamble/appendix is preserved. This is the emitted half the
+  devkit vendors + templatizes.
+- **Then seed the task #15 diverse corpus here** — many topically-distinct notes embedded
+  with real Ollama, so the auto-link `t_max`/topic-count analysis has genuine cluster
+  structure (today's ~7 notes are one blob). This repo is where the deferred auto-link
+  `--apply` eventually runs once the corpus lands.
+- **Stay a clean diff oracle** — `self_test.py` green; resolve any golden/template mismatch
+  here first. CI gates (compile, `check_autolink_format`, …) live in the devkit, not here.
 
 ```
  role: hand-prototype → prove (real Ollama) → hand off to the devkit
                               │
- devkit pulls:  vendor_golden.py → tests/golden → build_template → ci.py diff
+ wed 07-08 ✅ prototyped #10 helper + #8 auto-linking end-to-end → handed off (devkit CI 7/7)
                               │
- wed 07-08 ▸ prototype #10 splice helper (refactor --nudge) → start #8 auto-linking
-            (embed substance-not-metadata · related_auto frontmatter · content_hash)
+ thu 07-09 ▸ prototype #9 README markers (splice via #10 helper)
+            → seed #15 diverse corpus (real Ollama) for t_max / topic-count tuning
 ```
