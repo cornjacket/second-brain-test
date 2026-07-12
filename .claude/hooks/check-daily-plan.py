@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SessionStart hook: prompt for a fresh daily-plan.md when stale or missing.
 
-Installed by ai-project-status' setup-new-repo.sh. Stdout is automatically
+Installed by project-status' setup-new-repo.sh. Stdout is automatically
 injected as a system reminder before Claude sees the user's first prompt;
 silent (no output, exit 0) when the plan is fresh, so successful sessions
 are unaffected.
@@ -46,7 +46,7 @@ def main() -> int:
         f"    # Daily plan — {today_iso}\n\n"
         "Body: one short paragraph of intent plus a small ASCII diagram "
         "of the day's shape (timeline, flow, milestones). "
-        "ai-project-status aggregates this across tracked repos."
+        "project-status aggregates this across tracked repos."
     )
 
     if not plan.exists():

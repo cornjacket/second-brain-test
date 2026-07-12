@@ -75,20 +75,20 @@ pip install -r requirements.txt        # sqlite-vec (+ apsw fallback)
 
 <!-- ai-project-status:begin -->
 <!--
-  This block is injected and refreshed by ai-project-status:
-  https://github.com/cornjacket/ai-project-status
+  This block is injected and refreshed by project-status:
+  https://github.com/cornjacket/project-status
 
   It defines the commit-message discipline this repo must follow so
   the meta-repo can summarize cross-portfolio activity in summary.md.
 
   Do not edit between the begin/end markers — local edits will be
   overwritten on the next `setup-new-repo.sh --update`. To change
-  the rules, edit templates/claude-rule.md in ai-project-status
+  the rules, edit templates/claude-rule.md in project-status
   and re-run `setup-new-repo.sh --update <this-repo-remote>`.
 -->
 ## Knowledge Extraction & Git Automation
 
-This repo is monitored by [`ai-project-status`](https://github.com/cornjacket/ai-project-status). It no longer reads a `log.md` file — backward-looking activity is reconstructed **directly from your git history**. Your job is to make every commit message a high-level, self-contained telemetry record so the meta-repo can summarize cross-portfolio activity in `summary.md`.
+This repo is monitored by [`project-status`](https://github.com/cornjacket/project-status). It no longer reads a `log.md` file — backward-looking activity is reconstructed **directly from your git history**. Your job is to make every commit message a high-level, self-contained telemetry record so the meta-repo can summarize cross-portfolio activity in `summary.md`.
 
 ### Commit-message schema
 
@@ -104,6 +104,8 @@ Every commit MUST follow this shape:
 
 1. **The title summarizes the functional change, not the files.** Describe the overall behavior change or architectural decision (`engine(telemetry): replace log.md mining with commit parsing`), NOT a list of touched file names (`update _lib.py and tests`). A reader scanning `git log` should grasp *what changed in the system* from the title alone.
 
+1a. **Write for a reader unfamiliar with the project — carry enough top-level context to be self-contained.** These commits are summarized **across the whole portfolio** in `summary.md`, so a low-level, jargon-only message summarizes poorly. Name the capability in plain language and say *what it does for the product or user*, not just the internal mechanic; lead with the outcome, then the detail. Prefer `feat(auth): let users reset a forgotten password by email` over `add token TTL check to reset handler`. Assume the reader knows neither the file names nor the internal shorthand — a bare `refactor: lazy-import db` or `wire gate 4/7` is too esoteric on its own. This applies to the title **and** `[Context]`/`[Impact]`.
+
 2. **`[Context]` and `[Impact]` are required on any non-trivial commit.** `[Context]` captures the why / the lesson learned; `[Impact]` captures how the project or system behavior changes. Each may span multiple lines. Trivial mechanical commits (typo, formatting) may omit them.
 
 3. **Commit at task granularity — never per-prompt.** Multiple prompts inside one task land in one commit. Open a new commit when the focus changes (a new task, a substantively different question, a meaningfully new concept). Avoid both **commit-per-prompt** (noise that drowns out signal) and **task-without-a-commit** (gaps that make the history untrustworthy).
@@ -114,7 +116,7 @@ Every commit MUST follow this shape:
 
 ## Daily plan (daily-plan.md)
 
-`daily-plan.md` is a **forward-looking** plan file at the repo root. It captures the intent for one working day. ai-project-status aggregates every tracked repo's `daily-plan.md` into [`daily-plan-summary.md`](https://github.com/cornjacket/ai-project-status/blob/main/daily-plan-summary.md).
+`daily-plan.md` is a **forward-looking** plan file at the repo root. It captures the intent for one working day. project-status aggregates every tracked repo's `daily-plan.md` into [`daily-plan-summary.md`](https://github.com/cornjacket/project-status/blob/main/daily-plan-summary.md).
 
 ### Rules
 
