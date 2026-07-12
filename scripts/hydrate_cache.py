@@ -22,7 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
-from update_cache import TABLE_DDL  # noqa: E402  (shared cache schema)
+from note_view import canonical_body, frontmatter_tags  # noqa: E402
+from update_cache import FTS_DDL, TABLE_DDL  # noqa: E402  (shared cache schema)
 
 import sqlite_vec  # noqa: E402
 
@@ -41,8 +42,9 @@ def main() -> int:
 
     db = connect(DB_PATH)
     db.execute(TABLE_DDL)  # shared schema; IF NOT EXISTS — the table is never dropped
+    db.execute(FTS_DDL)    # lexical companion table (hybrid search)
 
-    # Rebuild in one transaction on the *existing* table so a concurrent reader (WAL)
+    # Rebuild in one transaction on the *existing* tables so a concurrent reader (WAL)
     # keeps seeing the old rows until COMMIT, then the new set atomically — no
     # unlink()/empty-DB window. Explicit BEGIN/COMMIT (not the wrapper's commit()):
     # apsw autocommits each statement otherwise, which would expose the empty table
@@ -50,6 +52,7 @@ def main() -> int:
     db.execute("BEGIN")
     try:
         db.execute("DELETE FROM notes")
+        db.execute("DELETE FROM notes_fts")
         count = 0
         for sidecar in find_sidecars():
             payload = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -58,10 +61,20 @@ def main() -> int:
                 raise SystemExit(
                     f"{sidecar}: vector has {len(vec)} dims, expected {EMBED_DIM}"
                 )
+            src = payload["source_file"]
             db.execute(
                 "INSERT INTO notes(source_file, embedding) VALUES (?, ?)",
-                (payload["source_file"], sqlite_vec.serialize_float32(vec)),
+                (src, sqlite_vec.serialize_float32(vec)),
             )
+            # Lexical row from the vault note (source of truth); skip if the note file is
+            # gone (orphan sidecar) — the vector still indexes.
+            note_path = REPO_ROOT / src
+            if note_path.exists():
+                note_text = note_path.read_text(encoding="utf-8")
+                db.execute(
+                    "INSERT INTO notes_fts(source_file, body, tags) VALUES (?, ?, ?)",
+                    (src, canonical_body(note_text), " ".join(frontmatter_tags(note_text))),
+                )
             count += 1
         db.execute("COMMIT")
     except BaseException:

@@ -57,13 +57,13 @@ def search_second_brain(query: str, k: int = 5) -> list[dict]:
 
     Consult this BEFORE designing a system, choosing conventions/naming, or deciding
     "how do we do X / what did we decide about Y" — the brain holds prior decisions,
-    conventions, and hard-won context. Returns up to ``k`` hits, nearest first, each
-    with the note's **absolute** path (the client is not in the brain's directory)
-    and its cosine ``distance`` (smaller = more relevant). Read a hit with ``get_note``.
+    conventions, and hard-won context. Returns up to ``k`` hits, most relevant first, each
+    with the note's **absolute** path (the client is not in the brain's directory) and a
+    hybrid relevance ``score`` (larger = more relevant). Read a hit with ``get_note``.
     """
     return [
-        {"source_file": str(BRAIN / src), "distance": round(float(dist), 4)}
-        for src, dist in search_vault.search(query, k)
+        {"source_file": str(BRAIN / src), "score": round(float(score), 4)}
+        for src, score in search_vault.search(query, k)
     ]
 
 

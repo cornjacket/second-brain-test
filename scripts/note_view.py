@@ -47,6 +47,45 @@ def canonical_body(text: str) -> str:
     return body + "\n" if body else ""
 
 
+def frontmatter_tags(text: str) -> list[str]:
+    """Return the note's frontmatter ``tags:`` as a list (``[]`` if absent).
+
+    Used to fold a note's tags into the **lexical** (FTS5) index alongside its body — the
+    complement of ``canonical_body`` (which drops frontmatter for the *embedding*). A tiny,
+    tolerant parser (no YAML dependency) covering the flat shapes the vault uses:
+
+    - inline list — ``tags: [a, b, c]``
+    - block list — ``tags:`` then ``  - a`` lines
+    - scalar — ``tags: a``
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].rstrip("\r\n") != "---":
+        return []
+    fm: list[str] = []
+    for line in lines[1:]:
+        if line.rstrip("\r\n") == "---":
+            break
+        fm.append(line)
+    for i, line in enumerate(fm):
+        stripped = line.strip()
+        if not stripped.startswith("tags:"):
+            continue
+        rest = stripped[len("tags:"):].strip()
+        if rest.startswith("[") and rest.endswith("]"):
+            return [t.strip().strip("'\"") for t in rest[1:-1].split(",") if t.strip()]
+        if rest:
+            return [rest.strip("'\"")]
+        tags = []
+        for follow in fm[i + 1:]:
+            s = follow.strip()
+            if s.startswith("- "):
+                tags.append(s[2:].strip().strip("'\""))
+            elif s:
+                break  # next frontmatter key ends the block list
+        return tags
+    return []
+
+
 def content_hash(text: str) -> str:
     """A byte-stable fingerprint of a note's substance — its canonical body.
 

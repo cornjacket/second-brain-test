@@ -32,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
+from note_view import canonical_body, frontmatter_tags  # noqa: E402
 
 import sqlite_vec  # noqa: E402
 
@@ -46,6 +47,14 @@ TABLE_DDL = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS notes USING vec0("
     f"source_file TEXT PRIMARY KEY, embedding FLOAT[{EMBED_DIM}] distance_metric=cosine)"
 )
+# The lexical companion to the vec0 table: a BM25-ranked FTS5 index over each note's
+# body + tags, hydrated by the SAME flow (hooks/hydrate) into the SAME data/brain.db, so
+# hybrid search (search_vault) fuses the two. source_file is UNINDEXED — stored so we can
+# return/DELETE by it, not tokenized. See docs/retrieval-quality.md §2.
+FTS_DDL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5("
+    "source_file UNINDEXED, body, tags)"
+)
 
 
 def sidecar_for(note: str) -> Path:
@@ -59,8 +68,24 @@ def is_para_note(rel: str) -> bool:
             and parts[0] == VAULT and parts[1] in PARA_ROOTS)
 
 
+def index_fts(db, note: str) -> None:
+    """(Re)index one note's lexical row in notes_fts from its Markdown body + tags.
+
+    Read from the vault note (the source of truth), not the sidecar — the sidecar is a pure
+    derived-embedding artifact and carries no body text. If the note file is missing (a rare
+    orphan), the vector row still stands; there is simply no lexical row to add.
+    """
+    db.execute("DELETE FROM notes_fts WHERE source_file = ?", (note,))
+    path = REPO_ROOT / note
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    db.execute("INSERT INTO notes_fts(source_file, body, tags) VALUES (?, ?, ?)",
+               (note, canonical_body(text), " ".join(frontmatter_tags(text))))
+
+
 def upsert(db, note: str) -> None:
-    """Insert-or-replace one note's vector from its sidecar (no teardown)."""
+    """Insert-or-replace one note's vector (from its sidecar) and lexical row (no teardown)."""
     sidecar = sidecar_for(note)
     if not sidecar.exists():
         raise SystemExit(
@@ -73,12 +98,14 @@ def upsert(db, note: str) -> None:
     db.execute("DELETE FROM notes WHERE source_file = ?", (note,))
     db.execute("INSERT INTO notes(source_file, embedding) VALUES (?, ?)",
                (note, sqlite_vec.serialize_float32(vec)))
+    index_fts(db, note)  # keep the lexical index in lockstep with the vector
     print(f"  upsert {note}")
 
 
 def delete(db, note: str) -> None:
-    """Remove one note's row and its orphan (git-ignored) sidecar."""
+    """Remove one note's rows (vector + lexical) and its orphan (git-ignored) sidecar."""
     db.execute("DELETE FROM notes WHERE source_file = ?", (note,))
+    db.execute("DELETE FROM notes_fts WHERE source_file = ?", (note,))
     sidecar = sidecar_for(note)
     if sidecar.exists():
         sidecar.unlink()
@@ -124,6 +151,7 @@ def main(argv: list[str]) -> int:
     DB_PATH.parent.mkdir(exist_ok=True)
     db = connect(DB_PATH)
     db.execute(TABLE_DDL)  # ensure the schema exists; never drops the table
+    db.execute(FTS_DDL)    # lexical companion table (hybrid search)
 
     if args.upsert:
         for note in args.upsert:
