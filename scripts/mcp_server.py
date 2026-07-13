@@ -9,8 +9,16 @@ loads only on demand. See ``docs/mcp-server.md`` in the devkit for the full scop
 It is a **thin wrapper** over the brain's own modules — ``embedder`` (embed the
 query), ``db`` (WAL sqlite-vec connection), and ``search_vault.search()``
 (cosine-KNN over ``data/brain.db``) — so there is exactly one retrieval
-implementation. **Read-only:** search + fetch, no note creation/editing (writing
-goes through the git-committed vault flow, which an MCP write tool would bypass).
+implementation.
+
+**Mostly read** — search, fetch, browse, glossary — plus exactly one writer,
+``add_note``, which **commits and pushes**. That is deliberate, and it is what keeps
+the write path from becoming a second system: a note is embedded by the *pre-commit
+hook* and the cache is refreshed by the *post-commit hook*, so committing reuses the
+one embedding path this brain already has instead of inventing a parallel one that
+would have to be kept in step with it forever. Pushing is what makes the note real for
+**every other client** of the brain (another machine, a shared/served brain) rather
+than only for the laptop that happened to write it.
 
 Claude Desktop launches it over stdio; run it directly the same way:
 
@@ -25,7 +33,9 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,6 +51,8 @@ BRAIN = Path(__file__).resolve().parents[1]
 VAULT = BRAIN / "vault"
 GLOSSARY = VAULT / "glossary"
 DB_PATH = BRAIN / "data" / "brain.db"
+TEMPLATE = VAULT / "templates" / "new-note.md"
+PARA_ROOTS = ("projects", "areas", "resources", "archive")
 
 mcp = FastMCP("second-brain")
 
@@ -248,6 +260,185 @@ def _near_misses(key: str, by_key: dict, n: int = 3) -> list[str]:
         if display not in ordered:
             ordered.append(display)
     return ordered[:n]
+
+
+# --- the write path ----------------------------------------------------------------------
+# add_note is the ONLY tool that mutates the brain. Two rules shape it:
+#
+#   1. It commits, because the commit IS the embed. The pre-commit hook embeds staged notes
+#      and the post-commit hook re-hydrates the cache, so a committed note is searchable with
+#      no extra step. Writing the file and embedding it "by hand" here would fork a second
+#      ingestion path that has to track the hooks forever — the bug you find six months later.
+#   2. It pushes, because a note only on this disk is invisible to every other client of the
+#      brain. A failed push is still not a lost note: the commit landed and search works
+#      locally, so we report the failure rather than pretend or roll back.
+
+
+def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
+    """Run git in the brain. GIT_TERMINAL_PROMPT=0 is load-bearing: this server runs headless
+    under Claude Desktop, so a credential prompt has no terminal to appear in — without it a
+    push against an auth-needing remote would hang the tool call forever instead of failing."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": ""}
+    return subprocess.run(["git", *args], cwd=BRAIN, env=env, check=check,
+                          capture_output=True, text=True, timeout=120)
+
+
+def _slugify(title: str) -> str:
+    """Note title -> filename stem: lowercase kebab-case, alphanumerics and hyphens only.
+
+    This is also the security boundary for the write path. It is a strict *allow*-list, not a
+    denylist of bad characters: everything outside [a-z0-9-] is dropped, so `../../etc/passwd`
+    or a leading `/` cannot survive it — a traversal payload in the title collapses to a plain
+    stem. Never build the path from the raw title.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", title.strip().lower()).strip("-")
+    return slug
+
+
+def _why(proc: subprocess.CompletedProcess) -> str:
+    """git's complaint as one readable line — its stderr is multi-line, and splicing that
+    verbatim into a report renders as garbage in a chat client."""
+    return " ".join((proc.stderr or proc.stdout or "").split())[:200]
+
+
+def _push(branch: str) -> str:
+    """Push the current branch; return a human-readable outcome line (never raises).
+
+    Handles the case the multi-client story guarantees will happen: another client pushed
+    first, so ours is rejected as non-fast-forward. Rebase onto the remote and retry once —
+    but only with a clean tree, because rebasing over someone's uncommitted edits from a chat
+    tool is a worse outcome than telling them to do it themselves.
+    """
+    if not _git("remote", check=False).stdout.strip():
+        return "not pushed: this brain has no git remote (it is local-only)"
+
+    first = _git("push", "origin", branch, check=False)
+    if first.returncode == 0:
+        return f"pushed to origin/{branch}"
+
+    dirty = bool(_git("status", "--porcelain", check=False).stdout.strip())
+    if dirty:
+        return (f"NOT PUSHED — push rejected and your working tree has uncommitted changes, so "
+                f"it cannot be safely rebased ({_why(first)}). The note IS committed and "
+                f"searchable locally; pull/rebase and push when convenient.")
+
+    rebased = _git("pull", "--rebase", "origin", branch, check=False)
+    if rebased.returncode != 0:
+        _git("rebase", "--abort", check=False)
+        return (f"NOT PUSHED — the remote moved ahead and the rebase did not apply cleanly "
+                f"({_why(rebased)}). The note IS committed and searchable locally; resolve by "
+                f"hand and push.")
+
+    retry = _git("push", "origin", branch, check=False)
+    if retry.returncode == 0:
+        return f"pushed to origin/{branch} (after rebasing onto the remote)"
+    return (f"NOT PUSHED — {_why(retry)}. The note IS committed and searchable locally; push "
+            f"by hand.")
+
+
+@mcp.tool(structured_output=False)
+def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None) -> str:
+    """Create a NEW note in the brain, then commit and push it. The only writing tool.
+
+    Call `list_vault` FIRST to see where the note belongs (and whether something like it already
+    exists — prefer extending your own knowledge over scattering near-duplicates), and
+    `get_note_template` to follow this brain's house style for the body.
+
+    `para_root` must be one of projects / areas / resources / archive (PARA, by actionability):
+    projects = a goal-bound effort; areas = an ongoing responsibility; resources = durable
+    reference; archive = inactive. `title` becomes both the H1 and the kebab-case filename.
+    `body` is Markdown (no frontmatter, no H1 — both are generated). Link related notes with
+    [[wikilinks]].
+
+    Refuses to overwrite an existing note. Committing is what embeds it (the pre-commit hook),
+    so it is searchable immediately; the push is what makes it visible to the brain's other
+    clients. Returns a report of what landed, including whether the push succeeded.
+    """
+    if para_root not in PARA_ROOTS:
+        raise ValueError(f"para_root must be one of {PARA_ROOTS}, got {para_root!r}")
+    slug = _slugify(title)
+    if not slug:
+        raise ValueError(f"title {title!r} has no usable characters for a filename")
+
+    path = VAULT / para_root / f"{slug}.md"
+    # Defense in depth: _slugify already makes an escape impossible, so this can only fire if
+    # someone loosens it. Cheap to keep, and this is the one tool that writes to disk.
+    if path.resolve().parent != (VAULT / para_root).resolve():
+        raise ValueError(f"refusing to write outside vault/{para_root}: {title!r}")
+    if path.exists():
+        raise ValueError(f"note already exists: {path.relative_to(BRAIN)} — add_note creates "
+                         "new notes only; edit an existing one in your editor")
+
+    front = ["---", f"tags: [{', '.join(tags)}]" if tags else "tags: []", "---", ""]
+    path.write_text("\n".join([*front, f"# {title}", "", body.strip(), ""]), encoding="utf-8")
+
+    rel = str(path.relative_to(BRAIN))
+    try:
+        # Stage ONLY this file, and commit ONLY this pathspec. A bare `git commit -a` (or
+        # staging the whole tree) would sweep the user's in-progress edits into a commit an
+        # agent authored — their work, our commit message, no consent. The pathspec keeps
+        # anything else they have staged exactly where it was: still staged, uncommitted.
+        _git("add", "--", rel)
+        _git("commit", "-m", f"note: add {title}", "--", rel)
+    except subprocess.CalledProcessError as exc:
+        path.unlink(missing_ok=True)  # leave no half-written note behind
+        raise ValueError(f"git commit failed, note not created: {_why(exc)}") from exc
+
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    pushed = _push(branch)
+
+    # The hooks are what embed + hydrate. If they are not installed (a fresh clone forgets
+    # `git config core.hooksPath .githooks`), the commit lands but the note is NOT searchable —
+    # a silent, confusing failure. Detect it by the missing sidecar and say so out loud.
+    sidecar = path.parent / f".{path.stem}.embed.json"
+    embedded = ("embedded + searchable now (pre/post-commit hooks)" if sidecar.exists() else
+                "WARNING: committed but NOT embedded — the git hooks are not active in this "
+                "brain (run: git config core.hooksPath .githooks), so this note will not be "
+                "found by search until you run scripts/embed_vault.py + scripts/hydrate_cache.py")
+    return f"created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
+
+
+@mcp.tool(structured_output=False)
+def list_vault(para_root: str = "") -> list[dict]:
+    """Browse the vault's structure — call this BEFORE add_note to decide where a note belongs.
+
+    With no argument: the PARA roots and how many notes each holds. With a `para_root`
+    (projects / areas / resources / archive): the notes filed under it, so you can see this
+    brain's existing subject matter and file a new note next to its siblings rather than
+    guessing. Nested folders, if any, are walked.
+
+    This lists paths and titles only — it does not read note bodies (use `search_second_brain`
+    to find notes by meaning, or `get_note` to read one). The glossary is not listed here; it
+    has its own tools.
+    """
+    if para_root and para_root not in PARA_ROOTS:
+        raise ValueError(f"para_root must be one of {PARA_ROOTS}, got {para_root!r}")
+
+    if not para_root:
+        return [{"para_root": r,
+                 "notes": sum(1 for _ in (VAULT / r).rglob("*.md")) if (VAULT / r).is_dir() else 0}
+                for r in PARA_ROOTS]
+
+    root = VAULT / para_root
+    if not root.is_dir():
+        return []
+    return [{"title": p.stem, "source_file": str(p.resolve()),
+             "path": str(p.relative_to(VAULT))}
+            for p in sorted(root.rglob("*.md"))]
+
+
+@mcp.tool(structured_output=False)
+def get_note_template() -> str:
+    """Return this brain's note template — the house style `add_note`'s body should follow.
+
+    Read it before composing a note so a new note looks like the ones already here. This is the
+    vault's live template, which the brain's owner may have edited, so it is the authority on
+    shape — not any convention you might assume.
+    """
+    if not TEMPLATE.exists():
+        return ("This brain has no vault/templates/new-note.md. Use a short H1 title, a "
+                "paragraph or two of durable content, and [[wikilinks]] to related notes.")
+    return TEMPLATE.read_text(encoding="utf-8")
 
 
 def main() -> int:

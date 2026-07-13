@@ -189,12 +189,28 @@ hard-won context. Do this proactively, before proposing a design.
 The skill above covers any client that can run a shell command (Claude Code, Gemini
 CLI). **Claude Desktop can't** — it reaches tools only over [MCP](https://modelcontextprotocol.io).
 For that one case this brain ships an optional **MCP server** (`scripts/mcp_server.py`)
-exposing the same read-only search over stdio. It's a thin wrapper over this brain's
-own embed + search, so results match the skill exactly. It exposes two tools:
-`search_second_brain(query, k)` → matching notes (absolute paths + distance) and
-`get_note(source_file)` → a note's Markdown. **Read-only** (notes are written through
-the git-committed vault flow) and **local-only** (a browser like claude.ai can't
-reach a local stdio server, so web chat isn't covered).
+over stdio. It's a thin wrapper over this brain's own embed + search, so results match
+the skill exactly. It exposes:
+
+| Tool | Does |
+| --- | --- |
+| `search_second_brain(query, k)` | Find notes by meaning — absolute paths + relevance. |
+| `get_note(source_file)` | Read one note's Markdown (refuses any path outside `vault/`). |
+| `list_vault(para_root)` | Browse the PARA structure — what's already filed, and where. |
+| `get_note_template()` | This brain's note template (`vault/templates/new-note.md`). |
+| `list_glossary_terms()` | Every defined glossary term + aliases. |
+| `lookup_glossary_term(term)` | One term's definition, by exact key (the glossary is deliberately kept out of semantic search). |
+| **`add_note(title, para_root, body, tags)`** | **Create a note — then commit and push it.** |
+
+**`add_note` writes to your repo.** It creates the note, `git commit`s it (which is what
+*embeds* it — the pre-commit hook — so it's searchable at once), and pushes to your remote
+if you have one, so the note reaches your brain's other clients rather than living on one
+laptop. It only ever stages **its own file**, so work you have in progress is never swept
+into a commit you didn't write, and it refuses to overwrite an existing note. If the push
+is rejected because another client got there first, it rebases and retries — and if that
+can't be done safely, it says so; the note is committed and searchable locally either way.
+Everything else is read-only. **Local-only:** a browser like claude.ai can't reach a local
+stdio server, so web chat isn't covered.
 
 ### Setup, step by step
 
