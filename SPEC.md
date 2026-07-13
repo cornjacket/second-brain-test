@@ -27,12 +27,12 @@ The pipeline keeps the two in sync:
 note.md ─(pre-commit)→ .note.embed.json ─(hydrate)→ vec0 cache ─(search)→ AI
 ```
 
-## 2. Vault layout (PARA)
+## 2. Vault layout (PARA(G))
 
 Notes are organized with the **PARA** method. The four PARA directories are the
 **vault roots** — and they define the embedding scope. Only Markdown under these
 roots is embedded; repo meta files (`README.md`, `CLAUDE.md`, `SPEC.md`,
-`scripts/`) are not.
+`scripts/`) are not, and neither are the two non-PARA sibling folders below.
 
 ```
 vault/                 # the Obsidian vault root; PARA roots live inside it
@@ -40,7 +40,37 @@ vault/                 # the Obsidian vault root; PARA roots live inside it
   areas/       # ongoing responsibilities to maintain
   resources/   # topics & references of durable interest
   archive/     # inactive items from the other three
+  templates/   # note scaffolds — NON-PARA sibling, not embedded
+  glossary/    # controlled-vocabulary term notes — NON-PARA sibling, not embedded
 ```
+
+### 2.1 Glossary — the **G** in PARA(G)
+
+`vault/glossary/` is a **controlled-vocabulary layer**: one atomic note per
+pre-identified term. It is a note **type**, orthogonal to PARA's actionability
+axis — an established pattern (`templates/` is already such a non-PARA sibling) —
+so the scheme is written **PARA(G)**: Projects, Areas, Resources, Archive, plus a
+**G**lossary. It is **not** a fifth actionability bucket.
+
+- **Marker:** `type: glossary` in the note's frontmatter is the tool-facing key
+  (the folder is for humans; scripts key off the marker).
+- **Embedding-excluded — by contract.** Glossary notes are **never embedded** and
+  never enter `data/brain.db`: a keyword-dense definition would rank too high for
+  its own term (stub-pollution), and their meaning is carried by the **link graph**
+  (the symbolic layer), not by vector proximity. This falls out of the PARA-scoped
+  embedding rule for free — `glossary/` is not a PARA root — exactly like
+  `templates/`. The inline `[[term]]` links a scan writes into *other* notes'
+  bodies **are** embedded (genuine substance); only the definition note is excluded.
+- **Emitted, not pre-filled.** A generated brain ships the **empty** folder + its
+  `README.md` — the vocabulary is the user's to curate. The term shape is embedded in
+  `scripts/glossary_new.py` (the scaffolder owns it), not a separate template file.
+- **Tooling:** `scripts/glossary_new.py "<term>"` scaffolds a term note (dedup-checked,
+  detect-and-instruct) and links the new term where it already appears (`--no-relink` to skip);
+  `scripts/glossary_scan.py` is the on-demand whole-vault link pass (report by default, `--apply`
+  inserts, idempotent, one link per term per note). Optionally, `config/features.toml`
+  `glossary_autolink = true` runs a **contained** pre-commit pass
+  (`scripts/glossary_autolink_staged.py`) that links known terms in **staged** notes only, before
+  embedding — off by default. All three edit note bodies, so touched notes re-embed on commit.
 
 ### Note format
 

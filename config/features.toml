@@ -1,0 +1,20 @@
+# Feature toggles for THIS brain.
+#
+# Read by scripts/features.py. The usual precedence applies — an env var overrides
+# this file for a single command, and a missing key falls back to the built-in
+# default, so an old brain without this file still works.
+#
+#   hybrid_search    — fuse lexical FTS5/BM25 with vector KNN via Reciprocal Rank
+#                      Fusion (true). Set false for vector-only (pre-hybrid) search:
+#                      the ablation baseline, or a fallback when FTS is unavailable.
+#                      Env: SECOND_BRAIN_HYBRID_SEARCH=0|1
+#   rrf_k            — RRF damping constant (60, the standard default); larger
+#                      flattens the rank weighting. Env: SECOND_BRAIN_RRF_K=<int>
+#   glossary_autolink — when true, the pre-commit hook links known glossary terms in
+#                      each staged note before embedding it (edits the note's body).
+#                      Off by default: opt in if you want commits to auto-link terms.
+#                      (Adding a term with glossary_new.py links it regardless.)
+#                      Env: SECOND_BRAIN_GLOSSARY_AUTOLINK=0|1
+hybrid_search = true
+rrf_k = 60
+glossary_autolink = false

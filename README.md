@@ -71,6 +71,33 @@ link notes with `[[wikilinks]]`. On commit the **pre-commit** hook embeds the no
 and the **post-commit** hook refreshes the cache — so it's searchable right away,
 no manual step.
 
+**Define a term (the glossary — PARA(G))** — for a **controlled vocabulary**, this
+brain adds a **G**lossary alongside PARA (Projects, Areas, Resources, Archive):
+`vault/glossary/` holds one atomic note per reused/non-obvious term. It's a note
+*type*, not a fifth actionability bucket. Scaffold one with:
+
+```bash
+python3 scripts/glossary_new.py "retrieval substrates"   # -> vault/glossary/retrieval-substrates.md
+```
+
+Fill in the one-line definition and commit. Glossary notes are **not** semantically
+searchable **by design** — they're never embedded (their meaning is the `[[term]]`
+link graph, the *symbolic* layer, not vector proximity), so they never appear in
+`search_vault.py`.
+
+`glossary_new.py` also **links the new term wherever it already appears** in your notes
+(pass `--no-relink` to skip). To re-link the whole vault on demand — e.g. for terms you
+hand-wrote — run the scan (report by default, idempotent):
+
+```bash
+python3 scripts/glossary_scan.py --apply   # insert [[term]] links across the vault
+```
+
+To link terms **automatically as you commit** notes, set `glossary_autolink = true` in
+[`config/features.toml`](config/features.toml) — the pre-commit hook then links known terms
+in each staged note (off by default; it edits the note's body). See
+[`vault/glossary/README.md`](vault/glossary/README.md).
+
 > **Tip — phrase a note the way you'll search for it.** Search ranks a note by how
 > close its *wording and meaning* are to your query, so a note that mirrors the
 > question you'll later ask is much easier to find. For a quick fact, lead with the
@@ -265,10 +292,11 @@ You should see both tool names and a few ranked note paths.
 
 ```
 ├── .githooks/pre-commit   # embeds staged notes locally + line-count guard
-├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill, mcp_server
+├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill, mcp_server, features, glossary_new/scan/autolink_staged
 ├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
 │   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope)
+│   ├── glossary/          # controlled-vocabulary terms — NON-PARA, not embedded (the G in PARA(G))
 │   └── …/.<note>.embed.json   # per-note vectors — DERIVED, git-ignored
 ├── tests/fixtures/vault/  # committed test-backend fixtures for self_test
 ├── data/brain.db          # SQLite vector cache — DERIVED, git-ignored

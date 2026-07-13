@@ -43,6 +43,7 @@ PARA_ROOTS = ("projects", "areas", "resources", "archive")
 
 sys.path.insert(0, str(SCRIPTS))
 from embedder import EMBED_DIM, backend_id, backend_name  # noqa: E402
+from features import hybrid_search, rrf_k  # noqa: E402
 import embed_staged as es  # noqa: E402  (write_sidecar / sidecar_path helpers)
 
 
@@ -102,6 +103,8 @@ def check_config(rep: Report) -> str:
     if not CONFIG_PATH.exists():
         rep.info("no config/embedder.toml — defaulting to the 'test' backend")
     rep.ok(f"active embedder backend: {backend_id()}")
+    mode = "hybrid (vector + lexical)" if hybrid_search() else "vector-only"
+    rep.ok(f"search: {mode}, RRF K={rrf_k()}")
     return backend_name()
 
 

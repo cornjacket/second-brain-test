@@ -21,6 +21,19 @@ non-trivial work, and `PLAN.md` kept in sync. Favor legibility over speed.
 Durable lessons, insights, and architecture understandings belong here as **PARA
 notes** — there is no separate ingestion path; a note *is* the ingestion.
 
+**What earns a note (keep the signal high).** A brain is only as good as its
+signal-to-noise — every note should be something *future-you would search for*.
+Gate it before capturing:
+
+- **Durable over transient** — the decision and *why*, the lesson, the reusable
+  pattern; not status updates or one-off logs that expire.
+- **Retrieval test** — "would I search for this in six months?" If no, don't save it.
+- **Single source of truth** — if it's already authoritative elsewhere (a repo, a
+  doc, a ticket), **link to it, don't copy** — a stale duplicate is worse than none.
+
+The mnemonic: **capture what transfers, not what merely happened** — a signup *log*
+is what happened; the *lesson* you drew from it is what transfers.
+
 - File the note under the right PARA root inside the vault: `vault/projects/`
   (goal-bound effort), `vault/areas/` (ongoing responsibility), `vault/resources/`
   (durable reference), `vault/archive/` (inactive).

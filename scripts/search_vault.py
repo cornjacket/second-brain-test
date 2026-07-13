@@ -13,6 +13,10 @@ Runs two retrievers over ``data/brain.db`` and fuses them with Reciprocal Rank F
 RRF (``score = Σ 1/(K_RRF + rank)``) is scale-free — it needs only each hit's *rank* in
 each list, sidestepping the incomparable cosine-vs-BM25 scores. A note ranked high in
 either list scores; high in both scores best. Higher score = more relevant.
+
+Both switches live in config/features.toml (scripts/features.py): ``hybrid_search`` gates
+the lexical leg — off gives vector-only (pre-hybrid) search, the ablation baseline — and
+``rrf_k`` sets K_RRF. See docs/retrieval-quality.md §2.
 """
 from __future__ import annotations
 
@@ -24,12 +28,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import embed  # noqa: E402
+from features import hybrid_search, rrf_k  # noqa: E402
 
 import sqlite_vec  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = REPO_ROOT / "data" / "brain.db"
-K_RRF = 60  # RRF damping constant (standard default); larger flattens the rank weighting
 
 
 def _fts_match_query(query: str) -> str:
@@ -86,10 +90,17 @@ def search(query: str, k: int = 5) -> list[tuple[str, float]]:
     db = connect(DB_PATH)
     try:
         pool = max(k, 20)  # fuse over a candidate pool wider than k, then trim
+        k_rrf = rrf_k()
+        # Always the vector leg; add the lexical leg only when hybrid is enabled.
+        # Vector-only still flows through RRF — one leg, so the fused order is the
+        # vector order and every hit keeps a comparable score.
+        legs = [_vector_ranked(db, query, pool)]
+        if hybrid_search():
+            legs.append(_lexical_ranked(db, query, pool))
         scores: dict[str, float] = {}
-        for ranked in (_vector_ranked(db, query, pool), _lexical_ranked(db, query, pool)):
+        for ranked in legs:
             for rank, source_file in enumerate(ranked, 1):
-                scores[source_file] = scores.get(source_file, 0.0) + 1.0 / (K_RRF + rank)
+                scores[source_file] = scores.get(source_file, 0.0) + 1.0 / (k_rrf + rank)
         fused = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
         return fused[:k]
     finally:
