@@ -395,7 +395,17 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
                 "WARNING: committed but NOT embedded — the git hooks are not active in this "
                 "brain (run: git config core.hooksPath .githooks), so this note will not be "
                 "found by search until you run scripts/embed_vault.py + scripts/hydrate_cache.py")
-    return f"created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
+
+    # Lead with the bad news. A partial failure here still returns SUCCESS (the note really was
+    # created, committed and embedded — it would be wrong to raise), so nothing forces the model
+    # to mention a failed push. Buried on line 3 it reads as detail and gets summarized away as
+    # "saved!", leaving the user believing a note synced when it did not. First line, in caps,
+    # with the word ACTION, is what survives summarization.
+    problems = [line for line in (pushed, embedded)
+                if line.startswith(("NOT PUSHED", "WARNING", "not pushed"))]
+    head = (f"PARTIAL SUCCESS — ACTION NEEDED (tell the user this, do not just say 'saved'): "
+            f"{' | '.join(problems)}\n" if problems else "")
+    return f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
 
 
 @mcp.tool(structured_output=False)
