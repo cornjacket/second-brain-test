@@ -385,6 +385,15 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
         # anything else they have staged exactly where it was: still staged, uncommitted.
         _git("add", "--", rel)
         _git("commit", "-m", f"note: add {title}", "--", rel)
+        # Re-sync the REAL index to what we just committed. A pathspec commit is a *partial*
+        # commit, and git hands hooks a **temporary** index for those — so anything a hook
+        # re-stages (with glossary_autolink on, the pre-commit hook links terms in the note and
+        # re-adds it) lands in that temp index and never reaches the real one, which keeps the
+        # PRE-hook blob. That stale entry is a staged *revert* of the hook's edit, lying in wait:
+        # the next commit by anyone — human or agent — silently applies it and un-links the term.
+        # The pathspec stays (it is what stops us sweeping up the user's staged work); this is the
+        # step it was missing. A no-op when no hook touched the file.
+        _git("add", "--", rel, check=False)
     except subprocess.CalledProcessError as exc:
         path.unlink(missing_ok=True)  # leave no half-written note behind
         raise ValueError(f"git commit failed, note not created: {_why(exc)}") from exc
