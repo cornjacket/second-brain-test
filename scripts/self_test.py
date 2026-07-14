@@ -31,6 +31,37 @@ def expected_sidecar(note: Path) -> Path:
     return note.parent / f".{note.stem}.embed.json"
 
 
+def check_link_invariance() -> int:
+    """A wikilink must not change what gets embedded (returns the failure count).
+
+    Link markup is not substance: `[[ablation]]` and `ablation` say the same thing. If they
+    hashed differently, auto-linking a term across the vault would re-embed every note it
+    touched for a change that carries no meaning — and the system's own output would be
+    feeding back into its own vectors. Cheap to assert, so every brain checks it.
+    """
+    from note_view import content_hash
+
+    plain = "# N\n\nAn ablation of the corpus.\n"
+    cases = {
+        "[[term]]":            "# N\n\nAn [[ablation]] of the corpus.\n",
+        "[[slug|surface]]":    "# N\n\nAn [[abl-study|ablation]] of the [[corpus]].\n",
+        "![[embed]]":          "# N\n\nAn ![[ablation]] of the corpus.\n",
+    }
+    failures = 0
+    for label, linked in cases.items():
+        if content_hash(linked) != content_hash(plain):
+            print(f"  DRIFT    link-invariance: {label} changed the embed input — a link "
+                  f"insertion would needlessly re-embed the note")
+            failures += 1
+    if content_hash(plain + "Extra prose.\n") == content_hash(plain):
+        print("  DRIFT    link-invariance: a REAL prose edit did not change the hash — the "
+              "no-op gate would skip an embed it must perform")
+        failures += 1
+    if not failures:
+        print("  ok       link-invariance: links don't re-embed; prose edits do")
+    return failures
+
+
 def main() -> int:
     notes = sorted(FIXTURES.rglob("*.md"))
     if not notes:
@@ -38,7 +69,7 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    failures = 0
+    failures = check_link_invariance()
     for note in notes:
         rel = note.relative_to(REPO_ROOT).as_posix()
         exp = expected_sidecar(note)

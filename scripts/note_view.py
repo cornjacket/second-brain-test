@@ -14,6 +14,11 @@ that will gate re-embedding:
 
 - take the body only — everything after a leading ``---`` … ``---`` frontmatter
   fence (no frontmatter → the whole text is the body);
+- **strip wikilink markup** — ``[[term]]`` → ``term``, ``[[slug|surface]]`` → ``surface``.
+  Markup is not substance: the brackets mean nothing a reader doesn't already get from the
+  words, so they must not move the vector. This is also what makes the content hash able to
+  distinguish *the prose was edited* from *a link was inserted* — auto-linking a term across
+  the vault then costs **zero** re-embeds, because the canonical view does not change at all;
 - normalize line endings to ``\n`` so a CRLF checkout matches an LF one;
 - drop blank lines hugging the fences and pin a single trailing ``\n`` (an empty
   body → ``""``), so incidental editor whitespace doesn't move the view.
@@ -21,6 +26,11 @@ that will gate re-embedding:
 from __future__ import annotations
 
 import hashlib
+import re
+
+# `[[target]]` / `[[target|surface]]` / `![[embed]]` -> the text a human actually reads.
+# Non-greedy, and `|`/brackets excluded from the target so adjacent links don't merge.
+_WIKILINK = re.compile(r"!?\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]")
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -39,10 +49,31 @@ def _strip_frontmatter(text: str) -> str:
     return text  # unterminated fence — not real frontmatter
 
 
+def strip_wikilinks(body: str) -> str:
+    """`[[term]]` -> `term`, `[[slug|surface]]` -> `surface`. Link *markup* is not substance.
+
+    Two reasons this belongs in the canonical view, not in a caller:
+
+    1. **A link carries no meaning the prose doesn't already carry.** `[[ablation]]` and
+       `ablation` say the same thing, so the brackets would shift the vector for nothing.
+    2. **It is what lets the content hash tell an *edit* from a *link insertion*.** Auto-linking
+       a term across the vault rewrites bodies; without this, every one of those notes re-embeds
+       for a change that means nothing. With it, the canonical view is byte-identical, the hash
+       matches, and the existing no-op gate in ``embed_staged`` skips the embed entirely — while
+       a genuine edit to the prose still changes the hash and still re-embeds.
+
+    It also closes the module's own invariant properly: the embedding must never be fed the
+    system's *own output*, and an auto-inserted wikilink is exactly that. The loop was shut for
+    frontmatter (``related_auto:``) and left open through the body.
+    """
+    return _WIKILINK.sub(lambda m: (m.group(2) or m.group(1)).strip(), body)
+
+
 def canonical_body(text: str) -> str:
     """Return the canonical substance view of a note (see module docstring)."""
     body = _strip_frontmatter(text)
     body = body.replace("\r\n", "\n").replace("\r", "\n")
+    body = strip_wikilinks(body)
     body = body.strip("\n")
     return body + "\n" if body else ""
 
