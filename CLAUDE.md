@@ -21,6 +21,17 @@ non-trivial work, and `PLAN.md` kept in sync. Favor legibility over speed.
 Durable lessons, insights, and architecture understandings belong here as **PARA
 notes** — there is no separate ingestion path; a note *is* the ingestion.
 
+The gate below is **deliberately duplicated** into `vault/templates/new-note.md`, which is
+what the MCP `get_note_template()` tool returns. That is the exception to link-don't-copy,
+and it is justified: the two readers are **disjoint**. An agent in this repo reads *this*
+file and can never see an MCP tool; an assistant in Claude Desktop reads the *template* and
+can never see this file. It is one rule delivered down two pipes that don't connect — not
+two competing sources of truth. Keeping only a pointer here would trade an always-loaded
+rule for one the model must remember to go fetch, and forgetting it is **silent**: the note
+still gets written, just unfiltered. The two copies cannot drift — a devkit CI gate fails
+the build if they differ (`tools/check_note_gate.py`). Edit **this** block; it is canonical.
+
+<!-- BEGIN what-earns-a-note -->
 **What earns a note (keep the signal high).** A brain is only as good as its
 signal-to-noise — every note should be something *future-you would search for*.
 Gate it before capturing:
@@ -33,6 +44,7 @@ Gate it before capturing:
 
 The mnemonic: **capture what transfers, not what merely happened** — a signup *log*
 is what happened; the *lesson* you drew from it is what transfers.
+<!-- END what-earns-a-note -->
 
 - File the note under the right PARA root inside the vault: `vault/projects/`
   (goal-bound effort), `vault/areas/` (ongoing responsibility), `vault/resources/`

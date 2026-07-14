@@ -340,9 +340,14 @@ def _push(branch: str) -> str:
 def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None) -> str:
     """Create a NEW note in the brain, then commit and push it. The only writing tool.
 
-    Call `list_vault` FIRST to see where the note belongs (and whether something like it already
-    exists — prefer extending your own knowledge over scattering near-duplicates), and
-    `get_note_template` to follow this brain's house style for the body.
+    Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
+    (durable over transient; "would I search for this in six months?"; link don't copy). Apply
+    that gate before writing: a brain is only as good as its signal-to-noise, and a tool that
+    makes notes cheap to add is exactly how one fills with things nobody will ever search for.
+    If the thing doesn't clear the bar, say so instead of saving it.
+
+    Call `list_vault` too, to see where the note belongs — and whether something like it already
+    exists, since extending an existing note usually beats scattering near-duplicates.
 
     `para_root` must be one of projects / areas / resources / archive (PARA, by actionability):
     projects = a goal-bound effort; areas = an ongoing responsibility; resources = durable
