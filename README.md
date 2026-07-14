@@ -56,6 +56,55 @@ python3 scripts/doctor.py --repair  # ...and fix what it safely can
 actionable line for anything that isn't (Ollama down, model missing, a note not yet
 embedded, a stale cache row). Run it whenever search behaves oddly.
 
+### If your remote is SSH: make it work *headlessly* (needed for `add_note`)
+
+Only if this brain has a **git remote over SSH** (`git@github.com:…`) **and** you want to
+write notes from Claude Desktop. Everything else works without this.
+
+The MCP `add_note` tool commits **and pushes** your new note. Claude Desktop launches the
+MCP server from the OS session — **not from your shell** — so it inherits **no
+`SSH_AUTH_SOCK`**, which means no ssh-agent. If your SSH key has a passphrase (it should),
+ssh cannot decrypt it and the push fails:
+
+```
+git@github.com: Permission denied (publickey)
+```
+
+The confusing part: **`git push` from your terminal still works**, because your shell *does*
+have an agent. Same repo, same key, same URL — only the environment differs. Nothing is
+rewriting your remote; check with `git config --get-regexp '^url\.'` (expect no output) if
+you suspect otherwise.
+
+**Fix (macOS)** — let ssh read the passphrase from the login keychain, so it needs no agent.
+Store the passphrase once, then create `~/.ssh/config`:
+
+```bash
+ssh-add --apple-use-keychain ~/.ssh/id_ed25519   # once: passphrase → login keychain
+```
+
+```
+# ~/.ssh/config   (chmod 600)
+Host github.com
+  IdentityFile ~/.ssh/id_ed25519
+  UseKeychain yes
+  AddKeysToAgent yes
+```
+
+Verify it works in an agent-less environment — this is the check that actually matters,
+because a plain `git push` from your shell proves nothing:
+
+```bash
+env -i PATH=/usr/bin:/bin HOME=$HOME git push --dry-run origin main
+```
+
+No `publickey` error means Claude Desktop can push too.
+
+**Not on SSH, or don't want to bother?** Two fine alternatives: use an **HTTPS** remote (a
+PAT in the keychain authenticates headlessly — `git remote set-url origin https://…`), or
+simply **push yourself** on your own schedule. A failed push is never a lost note: `add_note`
+still commits and embeds it, so it is searchable locally at once and merely not yet visible
+to the brain's *other* clients. It tells you so, leading with the warning.
+
 ## Everyday use
 
 **Record knowledge** — write a note under a PARA root, then commit it:
