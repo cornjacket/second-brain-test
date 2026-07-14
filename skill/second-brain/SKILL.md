@@ -17,8 +17,14 @@ Before designing a system, picking a convention or naming scheme, or answering a
 python3 "${CLAUDE_SKILL_DIR}/query.py" "<natural-language question>"
 ```
 
-- Prints the brain's location, then up to 5 matches as `distance  <absolute-path>`
-  (lower distance = closer match). Add `-k N` for more results.
+- Prints the brain's location, then up to 5 matches as `score  <absolute-path>`, best
+  first. **Higher score = more relevant.** Add `-k N` for more results.
+- **Do not read meaning into the score's magnitude.** It is a *hybrid* (vector + lexical)
+  relevance score fused by Reciprocal Rank Fusion, so it is computed from **ranks, not
+  similarity**: every score lands in a narrow band near `1/rrf_k` (≈0.016–0.033 with the
+  default `rrf_k = 60`) **by construction**. Clustered, small scores are **normal** and say
+  nothing about embedding quality or which backend is configured — use the **order**, not the
+  value. (Check `config/embedder.toml` if you want to know the backend.)
 - Then **read the returned note files** (the paths are absolute) for full content
   before relying on them — a match is a pointer, not the answer.
 

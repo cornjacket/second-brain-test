@@ -47,11 +47,16 @@ def main(argv: list[str]) -> int:
         return r.returncode
 
     print(f"# second-brain: {BRAIN}")
+    # Label the number. It is a hybrid RRF relevance score (higher = better), NOT a distance —
+    # and being rank-derived it always clusters near 1/rrf_k, so its magnitude means nothing.
+    # Unlabelled, it reads as a similarity and invites exactly the wrong conclusion: a reviewer
+    # once took the (perfectly normal) ~0.03 band as proof the brain was on a stub embedder.
+    print("# score: hybrid relevance, higher = better (rank-derived; magnitude is not similarity)")
     for line in r.stdout.splitlines():
         if not line.strip():
             continue
-        dist, _, src = line.partition("  ")
-        print(f"{dist}  {BRAIN / src.strip()}")
+        score, _, src = line.partition("  ")
+        print(f"{score}  {BRAIN / src.strip()}")
     return 0
 
 
