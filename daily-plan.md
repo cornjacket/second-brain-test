@@ -1,20 +1,26 @@
-# Daily plan — 2026-07-13
+# Daily plan — 2026-07-15
 
-**Focus:** hand-prototyping surface for the devkit. Sun 07-12 prototyped the whole glossary feature
-here (the PARA(G) namespace, `glossary_new`/`glossary_scan`/`glossary_autolink_staged`, and the #20
-MCP glossary tools) plus the #3 `features.toml` toggle — all vendored into the devkit. Mon 07-13's
-lead (**#21**) is **harness-side** (`check_mcp_server.py`), so the golden mostly holds the baseline.
+**Focus:** hand-prototyping surface for the devkit — features are built here by hand first
+(step 1 of the loop), confirmed to behave, then vendored into `second-brain-devkit` and
+regenerated. Tue 07-14 prototyped the whole write path here — `add_note`, `add_glossary_term`,
+the wikilink-invariant `note_view`, the `add_note` index-poison fix — all since vendored. Wed
+07-15's devkit work (a `doctor` check + server hardening) gets prototyped here first.
 
-- **Hold the baseline:** `self_test.py` + `doctor.py` green; sidecars on the **`test`** backend so the
-  vendored golden stays byte-stable for the devkit's structural diff.
-- **If the glossary flashcard/graph tail lands:** it touches `vault/glossary/README.md` here first,
-  then vendor → template.
-- **#21 needs no golden change** — it exercises the already-emitted `mcp_server.py`; no direct edits to
-  the devkit from here.
+- **▶▶ Prototype #30 here first — `doctor` stale-vector detection.** Add the check to
+  `scripts/doctor.py`: recompute each note's `content_hash`, compare to the sidecar's, report a
+  mismatch as stale-and-repairable (`--repair` re-embeds). Confirm it flags a note whose canonical
+  view changed but whose text didn't — then it gets vendored.
+- **Prototype #24 — MCP hang-safety** in `scripts/mcp_server.py` + `scripts/embedder.py`: a
+  timeout on the embedder's `urlopen`, `stdin=DEVNULL` on git subprocesses, ssh `BatchMode`.
+  Exercise by hand (a stalled or down Ollama must error, not hang) before vendoring.
+- **Discipline:** every change is prototyped here, then `vendor_golden.py` → `build_template.py`,
+  then `tools/ci.py` (10 gates) in the devkit must stay green — the golden IS the regression
+  baseline, so a clean structural diff is the acceptance test. Keep sidecars on the **`test`**
+  backend so the vendored snapshot stays byte-stable.
 
 ```
- golden (prototype here) ──vendor──► devkit tests/golden ──build_template──► template
-   │
-   ├─ baseline: self_test + doctor green, test-backend sidecars byte-stable
-   └─ glossary flashcard/graph tail (docs) if it lands; else idle — #21 is harness-side
+ golden = build-by-hand, then vendor
+   prototype #30 (doctor) ─┐
+   prototype #24 (hang)  ──┴─► vendor_golden → build_template → devkit CI 10/10
+ the live .git + pre-commit hook still fire here for real (step 1 of the loop)
 ```
