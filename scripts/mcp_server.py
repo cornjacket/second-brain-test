@@ -40,6 +40,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import glossary_new  # noqa: E402  (term scaffold + slug — single source of the term shape)
+import glossary_scan  # noqa: E402  (the shared link engine, reused by the write path)
 import hydrate_cache  # noqa: E402
 import search_vault  # noqa: E402
 
@@ -463,6 +465,98 @@ def get_note_template() -> str:
         return ("This brain has no vault/templates/new-note.md. Use a short H1 title, a "
                 "paragraph or two of durable content, and [[wikilinks]] to related notes.")
     return TEMPLATE.read_text(encoding="utf-8")
+
+
+@mcp.tool(structured_output=False)
+def add_glossary_term(term: str, definition: str, aliases: list[str] | None = None) -> str:
+    """Define a NEW glossary term, link it across the vault, then commit and push. A write tool.
+
+    The glossary is a **controlled vocabulary** — a short, curated set of exact terms the brain
+    agrees to define once and reuse. **What earns a term:** a word or phrase whose *precise*
+    meaning matters and recurs (a piece of jargon, a named method, an acronym), where a one-line
+    canonical definition is worth pinning. NOT: a whole topic (that is a PARA note — use
+    `add_note`), a passing mention, or anything you would not look up twice. A controlled
+    vocabulary an assistant mints into freely stops being controlled — if in doubt, don't.
+    Call `list_glossary_terms` first to see what exists and avoid a near-duplicate.
+
+    `term` is the natural form ("ablation study"); it becomes the note title and its filename
+    slug. `definition` is one atomic line. `aliases` are other surface forms that should resolve
+    to this term in `lookup_glossary_term` **and** get auto-linked (e.g. ["ablations"]).
+
+    On success this **links the term's first occurrence in every note that already mentions it**
+    (the vault-wide "link on use" sweep) and commits the term note plus every note it linked, then
+    pushes. That cascade is intended — it is how the brain wires a new term into what you have
+    already written. It stages **only** the files it created or linked, so your in-progress work is
+    never swept in. The glossary is deliberately **excluded from `search_second_brain`**, so a term
+    is reachable only through the glossary tools, never semantic search. Refuses if the term or any
+    alias already exists.
+    """
+    slug = glossary_new.slugify(term)
+    if not slug:
+        raise ValueError(f"term {term!r} has no usable characters for a name")
+    path = GLOSSARY / f"{slug}.md"
+    if path.resolve().parent != GLOSSARY.resolve():
+        raise ValueError(f"refusing to write outside the glossary: {term!r}")
+
+    # Refuse on a collision with the term's slug OR any alias — the glossary is a controlled
+    # vocabulary, so a duplicate key is a vault bug, not a merge. (Server-side the index warns on
+    # collision and picks first-writer; over MCP that warning is invisible, so refuse loudly.)
+    by_key, _ = _glossary_index()
+    for key in [slug, *[_normalize(a) for a in (aliases or [])]]:
+        if key and key in by_key:
+            raise ValueError(f"'{key}' already maps to {by_key[key]['path'].name} — "
+                             "add_glossary_term defines NEW terms only; edit the existing note "
+                             "to extend it")
+    if path.exists():
+        raise ValueError(f"glossary note already exists: {path.relative_to(BRAIN)}")
+
+    # Build the note from the shared scaffold (single source of the term shape), then fill in the
+    # definition line and declared aliases — so a term added over MCP is identical to one added by
+    # glossary_new.py on the CLI. Substitute on the stable `Term ? …` marker, not the placeholder's
+    # wording, so this does not silently ship the placeholder if the scaffold text ever drifts.
+    text = glossary_new.scaffold(term)
+    filled, n = re.subn(rf"(?m)^{re.escape(term)} \? .*$",
+                        f"{term} ? {definition.strip()}", text)
+    if n != 1:
+        raise ValueError("could not place the definition — the glossary scaffold shape changed; "
+                         "glossary_new.scaffold and add_glossary_term have drifted apart")
+    text = filled
+    if aliases:
+        text = text.replace("aliases: []", "aliases: [" + ", ".join(aliases) + "]")
+    path.write_text(text, encoding="utf-8")
+
+    # The sweep IS the feature: link the new term's first occurrence in every PARA note. Collect
+    # the exact files touched so we stage only those (never `git add -A`) — the term note plus each
+    # linked note. Thanks to the wikilink-invariant embed view, a linked note's vector is unchanged,
+    # so committing it does NOT re-embed it.
+    one = [(slug, term), *[(slug, a) for a in (aliases or [])]]
+    linked: list[str] = []
+    for note in glossary_scan.para_notes():
+        if glossary_scan.link_note_file(note, one):
+            linked.append(str(note.relative_to(BRAIN)))
+    touched = [str(path.relative_to(BRAIN)), *linked]
+
+    try:
+        _git("add", "--", *touched)
+        _git("commit", "-m", f"glossary: add {term}", "--", *touched)
+        _git("add", "--", *touched, check=False)  # re-sync real index after the partial commit (#28)
+    except subprocess.CalledProcessError as exc:
+        # Roll back the term note; leave already-linked notes (committed-or-not they're valid edits,
+        # and unlinking them is a worse mess than a clean re-run, which is idempotent).
+        path.unlink(missing_ok=True)
+        raise ValueError(f"git commit failed, term not added: {_why(exc)}") from exc
+
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    pushed = _push(branch)
+
+    link_report = (f"linked into {len(linked)} note(s)" if linked else
+                   "no existing note mentioned it yet (nothing to link)")
+    problems = [pushed] if pushed.startswith(("NOT PUSHED", "not pushed")) else []
+    head = (f"PARTIAL SUCCESS — ACTION NEEDED (tell the user, do not just say 'saved'): "
+            f"{' | '.join(problems)}\n" if problems else "")
+    return (f"{head}defined {slug} in the glossary; {link_report}\n"
+            f"committed to {branch}\n{pushed}\n"
+            f"reachable via lookup_glossary_term (NOT search — the glossary is excluded by design)")
 
 
 def main() -> int:
