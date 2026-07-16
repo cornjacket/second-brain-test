@@ -45,6 +45,7 @@ sys.path.insert(0, str(SCRIPTS))
 from embedder import EMBED_DIM, backend_id, backend_name  # noqa: E402
 from features import hybrid_search, rrf_k  # noqa: E402
 import embed_staged as es  # noqa: E402  (write_sidecar / sidecar_path helpers)
+from note_view import content_hash  # noqa: E402  (the embed-input fingerprint)
 
 
 class Report:
@@ -182,6 +183,7 @@ def scan() -> dict:
     bad_dim: set[str] = set()
     mixed: set[str] = set()
     unreadable: set[str] = set()
+    stale_hash: set[str] = set()
     for note, sc in sidecars.items():
         try:
             payload = json.loads(sc.read_text(encoding="utf-8"))
@@ -192,6 +194,20 @@ def scan() -> dict:
             bad_dim.add(note)
         if payload.get("type") != active:
             mixed.add(note)
+        # Stale embed: the sidecar's stored content_hash no longer matches what the note's
+        # canonical substance view hashes to NOW. Two ways this happens, both meaning "the vector
+        # was produced from an input that is no longer current": (a) the note's substance was
+        # edited but not re-embedded, or (b) the canonical-view *definition* changed under it —
+        # e.g. an upgrade added wikilink-stripping (#26) but update_brain never re-embeds, so every
+        # note silently carries a vector from the old view. Search still works, which is exactly
+        # why nothing else notices. Recompute and compare; a stored hash that predates the field
+        # (older sidecar) is treated as stale so an upgrade re-embeds it.
+        try:
+            current = content_hash((REPO_ROOT / note).read_text(encoding="utf-8"))
+        except OSError:
+            continue  # note vanished mid-scan; the orphan/missing sets own that case
+        if payload.get("content_hash") != current:
+            stale_hash.add(note)
 
     notes_wo_sidecar = notes - set(sidecars)
     orphan_sidecars = set(sidecars) - notes
@@ -215,6 +231,7 @@ def scan() -> dict:
         "mixed": mixed,
         "bad_dim": bad_dim,
         "unreadable": unreadable,
+        "stale_hash": stale_hash,
         "db_missing": rows is None,
     }
 
@@ -242,10 +259,13 @@ def report_consistency(rep: Report, st: dict) -> None:
     for note in sorted(st["unreadable"]):
         rep.fail(f"unreadable sidecar: "
                  f"{st['sidecars'][note].relative_to(REPO_ROOT).as_posix()}")
+    for note in sorted(st["stale_hash"]):
+        rep.fail(f"stale embedding (vector predates the note's current content — re-embed): "
+                 f"{note}")
 
     clean = not any(st[k] for k in (
         "notes_wo_sidecar", "orphan_sidecars", "missing_from_db", "stale_in_db",
-        "mixed", "bad_dim", "unreadable")) and not st["db_missing"]
+        "mixed", "bad_dim", "unreadable", "stale_hash")) and not st["db_missing"]
     if clean:
         rep.ok(f"vault↔sidecar↔db in sync ({len(st['notes'])} note(s))")
 
@@ -266,7 +286,7 @@ def do_repair(st: dict) -> None:
     # 2. (Re)embed notes that are missing / wrong-dim / wrong-backend. Restrict to
     #    notes that actually exist — orphans are handled above, not re-embedded.
     to_embed = ((st["notes_wo_sidecar"] | st["mixed"] | st["bad_dim"]
-                 | st["unreadable"]) & st["notes"])
+                 | st["unreadable"] | st["stale_hash"]) & st["notes"])
     for note in sorted(to_embed):
         es.write_sidecar(note, force=True)  # repair must rewrite even a hash-matching sidecar
         print(f"  repair: embedded {note}")
