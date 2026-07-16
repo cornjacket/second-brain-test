@@ -43,7 +43,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import glossary_new  # noqa: E402  (term scaffold + slug — single source of the term shape)
 import glossary_scan  # noqa: E402  (the shared link engine, reused by the write path)
 import hydrate_cache  # noqa: E402
+import note_view  # noqa: E402  (frontmatter_tags — the tag vocabulary for list_tags)
 import search_vault  # noqa: E402
+
+# A cap for the list tools. They are consumed by a model, not a scrolling human, so the right
+# primitives are FILTER and RANK, not pagination — and a cap that hides that it capped reads as
+# "this is everything", so the model invents a value that isn't there. Every capped reply must say
+# what it omitted and how to narrow. Env-overridable for a genuinely large vault.
+_LIST_CAP = int(os.environ.get("SECOND_BRAIN_LIST_CAP", "50"))
+
+
+def _cap(items: list, *, match: str, kind: str, hint: str) -> list:
+    """Cap a list result, appending a self-describing overflow marker when it truncates.
+
+    Never truncates silently: on overflow the last element is a dict describing how many were
+    omitted and how to narrow (a `match=` filter). The marker is a plain dict the model reads as
+    text — there is no separate 'metadata' channel on a structured_output=False tool.
+    """
+    if len(items) <= _LIST_CAP:
+        return items
+    shown, omitted = items[:_LIST_CAP], len(items) - _LIST_CAP
+    scope = f" matching {match!r}" if match else ""
+    return [*shown, {"_truncated": f"showing {_LIST_CAP} of {len(items)} {kind}{scope}; "
+                     f"{omitted} more omitted — {hint}"}]
 
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
@@ -206,17 +228,49 @@ def get_note(source_file: str) -> str:
 
 
 @mcp.tool(structured_output=False)
-def list_glossary_terms() -> list[dict]:
-    """List every defined glossary term (name + declared aliases), no definitions.
+def list_glossary_terms(match: str = "") -> list[dict]:
+    """List defined glossary terms (name + declared aliases), no definitions.
 
     The glossary is a **controlled vocabulary** of exact terms, **intentionally absent from
     `search_second_brain`** (semantic search) — reach it only through this tool and
     `lookup_glossary_term`. Call this **first** whenever you are unsure a term exists or of
-    its exact name, so you can then look it up by an exact key instead of guessing. Returns
-    an empty list if this brain has no glossary yet.
+    its exact name, so you can then look it up by an exact key instead of guessing. `match`
+    filters by a case-insensitive substring over the term and its aliases. Long results are
+    **capped** with a note saying so; a controlled vocabulary big enough to need paging is a
+    smell, not a requirement. Returns an empty list if this brain has no glossary yet.
     """
     _, terms = _glossary_index()
-    return terms
+    if match:
+        needle = match.lower()
+        terms = [t for t in terms
+                 if needle in t["term"].lower()
+                 or any(needle in a.lower() for a in t.get("aliases", []))]
+    return _cap(terms, match=match, kind="glossary terms",
+                hint="pass match= to filter by term or alias")
+
+
+@mcp.tool(structured_output=False)
+def list_tags(match: str = "") -> list[dict]:
+    """List the vault's tag vocabulary, most-used first — call before tagging a NEW note.
+
+    Notes carry frontmatter `tags:`, and reusing an existing tag is what keeps them grouped; a
+    near-miss (`ml` vs `machine-learning`) silently splits the group. This is the ONLY way to see
+    what tags already exist — nothing else exposes them — so consult it before inventing a tag.
+    Returns `{tag, count}` sorted by count (the common tags are the ones worth reusing, so a cap
+    keeps the useful head). `match` filters by a case-insensitive substring. Empty if untagged.
+    """
+    counts: dict[str, int] = {}
+    for root in PARA_ROOTS:
+        base = VAULT / root
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.md"):
+            for tag in note_view.frontmatter_tags(p.read_text(encoding="utf-8")):
+                counts[tag] = counts.get(tag, 0) + 1
+    needle = match.lower()
+    rows = [{"tag": t, "count": c} for t, c in counts.items() if needle in t.lower()]
+    rows.sort(key=lambda r: (-r["count"], r["tag"]))  # count desc, then name for a stable order
+    return _cap(rows, match=match, kind="tags", hint="pass match= to filter by substring")
 
 
 @mcp.tool(structured_output=False)
@@ -445,17 +499,17 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
 
 
 @mcp.tool(structured_output=False)
-def list_vault(para_root: str = "") -> list[dict]:
-    """Browse the vault's structure — call this BEFORE add_note to decide where a note belongs.
+def list_vault(para_root: str = "", match: str = "") -> list[dict]:
+    """Browse the vault's *structure* — call this BEFORE add_note to decide where a note belongs.
 
     With no argument: the PARA roots and how many notes each holds. With a `para_root`
-    (projects / areas / resources / archive): the notes filed under it, so you can see this
-    brain's existing subject matter and file a new note next to its siblings rather than
-    guessing. Nested folders, if any, are walked.
+    (projects / areas / resources / archive): the notes filed under it, so you can file a new note
+    next to its siblings. `match` filters note titles by a case-insensitive substring.
 
-    This lists paths and titles only — it does not read note bodies (use `search_second_brain`
-    to find notes by meaning, or `get_note` to read one). The glossary is not listed here; it
-    has its own tools.
+    This lists paths and titles only. To answer *"does a note like this already exist?"* — a
+    question about **meaning**, not names — use `search_second_brain`, which is far better at it than
+    scanning titles here. Long results are **capped**; the reply says so and how to narrow (`match`).
+    The glossary is not listed here (it has `list_glossary_terms`); tags have `list_tags`.
     """
     if para_root and para_root not in PARA_ROOTS:
         raise ValueError(f"para_root must be one of {PARA_ROOTS}, got {para_root!r}")
@@ -468,9 +522,12 @@ def list_vault(para_root: str = "") -> list[dict]:
     root = VAULT / para_root
     if not root.is_dir():
         return []
-    return [{"title": p.stem, "source_file": str(p.resolve()),
-             "path": str(p.relative_to(VAULT))}
-            for p in sorted(root.rglob("*.md"))]
+    needle = match.lower()
+    notes = [{"title": p.stem, "source_file": str(p.resolve()),
+              "path": str(p.relative_to(VAULT))}
+             for p in sorted(root.rglob("*.md")) if needle in p.stem.lower()]
+    return _cap(notes, match=match, kind=f"notes in {para_root}",
+                hint="pass match= to filter by title, or search_second_brain to find by meaning")
 
 
 @mcp.tool(structured_output=False)
