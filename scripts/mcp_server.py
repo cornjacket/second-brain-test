@@ -45,6 +45,7 @@ import glossary_scan  # noqa: E402  (the shared link engine, reused by the write
 import hydrate_cache  # noqa: E402
 import note_view  # noqa: E402  (frontmatter_tags — the tag vocabulary for list_tags)
 import search_vault  # noqa: E402
+import tag_hygiene  # noqa: E402  (near-miss rule — shared with tag_lint so the two can't drift)
 
 # A cap for the list tools. They are consumed by a model, not a scrolling human, so the right
 # primitives are FILTER and RANK, not pagination — and a cap that hides that it capped reads as
@@ -273,6 +274,31 @@ def list_tags(match: str = "") -> list[dict]:
     return _cap(rows, match=match, kind="tags", hint="pass match= to filter by substring")
 
 
+def _tag_near_miss_warnings(tags: list[str] | None) -> list[str]:
+    """Non-blocking hints when a proposed tag is a near-miss of one already in the vault.
+
+    The highest-leverage moment to stop a tag split is *before* it enters the vault, so
+    `add_note` runs its proposed tags through the same near-miss rule the lint pass uses
+    (tag_hygiene) against the existing vocabulary. It only *informs* — the model still
+    decides — because the caller may genuinely mean a new, distinct tag.
+    """
+    if not tags:
+        return []
+    carriers = tag_hygiene.scan_notes(VAULT)
+    total = tag_hygiene.note_total(VAULT)
+    # Same exclusion as the lint pass: don't warn that a compound is "close to" a broad
+    # umbrella tag (`ai-agents` vs a near-universal `ai`) — that is not a split.
+    vocabulary = {t for t, notes in carriers.items()
+                  if not (total and len(notes) / total >= tag_hygiene.NEAR_UNIVERSAL)}
+    warnings = []
+    for tag in tags:
+        hit = tag_hygiene.near_miss_of(tag, vocabulary)
+        if hit:
+            warnings.append(f"'{tag}' is close to existing '{hit}' — reuse '{hit}' to keep "
+                            "the group together, unless you truly mean a distinct tag")
+    return warnings
+
+
 @mcp.tool(structured_output=False)
 def lookup_glossary_term(term: str) -> str:
     """Return the full definition note for an EXACT glossary term — a dictionary lookup.
@@ -450,6 +476,10 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
         raise ValueError(f"note already exists: {path.relative_to(BRAIN)} — add_note creates "
                          "new notes only; edit an existing one in your editor")
 
+    # Check proposed tags against the EXISTING vocabulary before this note joins it, so a
+    # near-miss is compared to what the vault already has (not to the note's own new tags).
+    tag_warnings = _tag_near_miss_warnings(tags)
+
     front = ["---", f"tags: [{', '.join(tags)}]" if tags else "tags: []", "---", ""]
     path.write_text("\n".join([*front, f"# {title}", "", body.strip(), ""]), encoding="utf-8")
 
@@ -495,7 +525,10 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
                 if line.startswith(("NOT PUSHED", "WARNING", "not pushed"))]
     head = (f"PARTIAL SUCCESS — ACTION NEEDED (tell the user this, do not just say 'saved'): "
             f"{' | '.join(problems)}\n" if problems else "")
-    return f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
+    # Advisory, not a failure: the note is really saved. A near-miss tag is worth flagging so
+    # the vocabulary does not silently split, but it never blocks the write.
+    tag_hint = ("\nTAG HINT: " + "; ".join(tag_warnings)) if tag_warnings else ""
+    return f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}{tag_hint}"
 
 
 @mcp.tool(structured_output=False)
@@ -587,6 +620,16 @@ def add_glossary_term(term: str, definition: str, aliases: list[str] | None = No
     if path.exists():
         raise ValueError(f"glossary note already exists: {path.relative_to(BRAIN)}")
 
+    # Non-blocking hygiene for the controlled vocabulary: an EXACT collision was refused above,
+    # but a near-duplicate term (`ablations` when `ablation` exists) splits the glossary the same
+    # way a near-miss tag splits the tag set. Surface close existing terms so the caller can
+    # confirm this is genuinely new before it lands.
+    term_hints: list[str] = []
+    for surface in [term, *(aliases or [])]:
+        for hit in _near_misses(_normalize(surface), by_key):
+            if hit not in term_hints:
+                term_hints.append(hit)
+
     # Build the note from the shared scaffold (single source of the term shape), then fill in the
     # definition line and declared aliases — so a term added over MCP is identical to one added by
     # glossary_new.py on the CLI. Substitute on the stable `Term ? …` marker, not the placeholder's
@@ -631,9 +674,12 @@ def add_glossary_term(term: str, definition: str, aliases: list[str] | None = No
     problems = [pushed] if pushed.startswith(("NOT PUSHED", "not pushed")) else []
     head = (f"PARTIAL SUCCESS — ACTION NEEDED (tell the user, do not just say 'saved'): "
             f"{' | '.join(problems)}\n" if problems else "")
+    term_hint = ("\nTERM HINT: close to existing glossary term(s): " + ", ".join(term_hints)
+                 + " — confirm this is not a duplicate" if term_hints else "")
     return (f"{head}defined {slug} in the glossary; {link_report}\n"
             f"committed to {branch}\n{pushed}\n"
-            f"reachable via lookup_glossary_term (NOT search — the glossary is excluded by design)")
+            f"reachable via lookup_glossary_term (NOT search — the glossary is excluded by design)"
+            f"{term_hint}")
 
 
 def main() -> int:
