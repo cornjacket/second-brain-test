@@ -276,13 +276,33 @@ def _near_misses(key: str, by_key: dict, n: int = 3) -> list[str]:
 #      locally, so we report the failure rather than pretend or roll back.
 
 
-def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
-    """Run git in the brain. GIT_TERMINAL_PROMPT=0 is load-bearing: this server runs headless
-    under Claude Desktop, so a credential prompt has no terminal to appear in — without it a
-    push against an auth-needing remote would hang the tool call forever instead of failing."""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": ""}
-    return subprocess.run(["git", *args], cwd=BRAIN, env=env, check=check,
-                          capture_output=True, text=True, timeout=120)
+def _git(*args: str, check: bool = True, timeout: int = 60) -> subprocess.CompletedProcess:
+    """Run git in the brain, guaranteeing it can never *hang* this headless server.
+
+    Three things make that guarantee, and all three matter because the server runs under Claude
+    Desktop with no terminal to prompt at:
+      - ``GIT_TERMINAL_PROMPT=0`` stops *git's* own credential prompt.
+      - ``GIT_SSH_COMMAND=ssh -o BatchMode=yes`` stops *ssh's* passphrase/host-key prompt — which
+        the git flag does NOT cover, and this brain's remote may well be SSH. Without it a push
+        against a passphrase key waits forever on input that can never come.
+      - ``stdin=DEVNULL`` because on stdio the server's stdin IS the JSON-RPC channel; a child that
+        reads from it would consume protocol bytes and corrupt the session. Never let git touch it.
+    A ``timeout`` bounds the worst case regardless; on expiry we return a non-zero result (not a
+    traceback), so callers report a clean failure like any other."""
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "",
+           "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
+    try:
+        return subprocess.run(["git", *args], cwd=BRAIN, env=env, check=check,
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                              timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        result = subprocess.CompletedProcess(
+            exc.cmd, returncode=124, stdout=exc.stdout or "",
+            stderr=f"git {args[0] if args else ''} timed out after {timeout}s")
+        if check:
+            raise subprocess.CalledProcessError(
+                124, exc.cmd, output=result.stdout, stderr=result.stderr) from exc
+        return result
 
 
 def _slugify(title: str) -> str:

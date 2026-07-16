@@ -96,8 +96,22 @@ def embed_ollama(text: str, task: str) -> list[float]:
         data=payload,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req) as resp:
-        body = json.loads(resp.read())
+    # A timeout is load-bearing: without one, urlopen waits forever. A stalled Ollama (the usual
+    # cause is a cold model load) would then hang the caller indefinitely — and the caller may be
+    # the long-lived MCP server, so one bad embed freezes every tool. Bound it; a slow brain must
+    # degrade to an error, never to silence. Generous default (cold loads are slow but finite),
+    # env-overridable.
+    timeout = float(os.environ.get("SECOND_BRAIN_EMBED_TIMEOUT", "120"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read())
+    except (urllib.error.URLError, TimeoutError) as exc:
+        reason = getattr(exc, "reason", exc)
+        raise RuntimeError(
+            f"Ollama did not respond within {timeout:.0f}s at {host} ({reason}). "
+            "Is it running (`ollama serve`) and the model pulled? "
+            "Raise SECOND_BRAIN_EMBED_TIMEOUT if a cold model load needs longer."
+        ) from exc
     vec = body["embedding"]
     if len(vec) != EMBED_DIM:
         raise ValueError(
