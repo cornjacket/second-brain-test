@@ -29,7 +29,8 @@ Detection passes (`analyze`):
                     is otherwise kebab-case).
 
 Backfill (`apply_mapping`): rewrite frontmatter `tags:` only, from an explicit mapping —
-no inference. Preserves everything else, dedupes on a merge, and is idempotent.
+no inference. Renames, merges, or (with an empty target) removes a tag; preserves
+everything else, dedupes on a merge, and is idempotent.
 
 Scope is frontmatter `tags:` in the PARA roots only — the exact surface `list_tags`
 enumerates. Never bodies, wikilinks, titles, the glossary, or the note template.
@@ -296,13 +297,17 @@ class Change:
 def _apply_map(tags: list[str], mapping: dict[str, str]) -> list[str]:
     """Rewrite a tag list through `mapping`, preserving order and deduping a merge.
 
-    A merge (`ai-agents` -> `agents` on a note already carrying `agents`) would create a
-    duplicate; first-wins dedup collapses it. The result is what makes re-running a no-op:
-    a tag already at its mapped value maps to itself and nothing changes.
+    Three operations, all from the one mapping: a rename (`old -> new`), a merge (two olds
+    to one new — first-wins dedup collapses the duplicate it would create), and a **removal**
+    (`old -> ""`, an empty target: the tag is dropped, which is how a leaked-title tag the
+    format-lint pass flags actually gets cleaned). Re-running is a no-op: a tag already at its
+    mapped value maps to itself, and an already-removed tag is simply absent.
     """
     out: list[str] = []
     for tag in tags:
         mapped = mapping.get(tag, tag)
+        if mapped == "":          # empty target = removal
+            continue
         if mapped not in out:
             out.append(mapped)
     return out

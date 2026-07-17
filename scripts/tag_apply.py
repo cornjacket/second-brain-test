@@ -12,7 +12,8 @@ It never infers a mapping; it rewrites exactly what the mapping file says, in fr
 Mapping file — one rename per line, `old -> new` (also `old: new` or `old = new`); blank
 lines and `#` comments are ignored. A JSON object `{"old": "new", ...}` is accepted too.
 A merge is just two olds pointing at one new; a note that would then carry the tag twice
-is deduped.
+is deduped. An **empty target** (`old ->`, or `{"old": ""}`) **removes** the tag — how a
+leaked-title tag the lint pass flags gets cleaned.
 
 On --apply the edited notes are written and `git add`-ed (only those notes — any other
 working-tree changes are left untouched), but NOT committed: review the staged diff and
@@ -51,9 +52,9 @@ def parse_mapping(text: str) -> dict[str, str]:
         else:
             raise ValueError(f"line {lineno}: expected 'old -> new', got {raw!r}")
         old, new = old.strip(), new.strip()
-        if not old or not new:
-            raise ValueError(f"line {lineno}: empty old or new tag in {raw!r}")
-        mapping[old] = new
+        if not old:
+            raise ValueError(f"line {lineno}: missing the old tag in {raw!r}")
+        mapping[old] = new  # new may be empty — that means remove `old`
     return mapping
 
 
@@ -85,7 +86,8 @@ def main(argv: list[str] | None = None) -> int:
 
     changes = tag_hygiene.apply_mapping(VAULT, mapping, dry_run=not args.apply)
     mode = "APPLIED" if args.apply else "DRY-RUN (no files changed)"
-    print(f"{mode} — mapping: " + ", ".join(f"{o} -> {n}" for o, n in mapping.items()))
+    shown = ", ".join(f"{o} -> {n}" if n else f"{o} -> (removed)" for o, n in mapping.items())
+    print(f"{mode} — mapping: {shown}")
     if not changes:
         print("no note needed a change (already consistent, or the mapping matched nothing)")
         return 0

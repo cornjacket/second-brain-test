@@ -109,6 +109,20 @@ class RewriteTagsTest(unittest.TestCase):
         self.assertIsNone(tag_hygiene.rewrite_tags(text, {"ai-agents": "agents"}))
         self.assertIsNone(tag_hygiene.rewrite_tags(text, {"agents": "agents"}))
 
+    def test_removal_empty_target_drops_the_tag(self):
+        text = "---\ntags: [magic-number, reference]\n---\n\nBody.\n"
+        out = tag_hygiene.rewrite_tags(text, {"magic-number": ""})
+        self.assertIn("tags: [reference]", out)
+
+    def test_removal_of_last_tag_leaves_empty_list(self):
+        text = "---\ntags: [magic-number]\n---\n\nBody.\n"
+        out = tag_hygiene.rewrite_tags(text, {"magic-number": ""})
+        self.assertIn("tags: []", out)
+
+    def test_removal_is_idempotent(self):
+        text = "---\ntags: [reference]\n---\n\nBody.\n"  # magic-number already gone
+        self.assertIsNone(tag_hygiene.rewrite_tags(text, {"magic-number": ""}))
+
     def test_no_frontmatter_or_no_tags_key(self):
         self.assertIsNone(tag_hygiene.rewrite_tags("no frontmatter here\n", {"a": "b"}))
         self.assertIsNone(tag_hygiene.rewrite_tags("---\ntitle: x\n---\n\nBody.\n", {"a": "b"}))
