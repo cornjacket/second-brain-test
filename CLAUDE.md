@@ -53,6 +53,13 @@ is what happened; the *lesson* you drew from it is what transfers.
   Link related notes with `[[wikilinks]]`. Start from the annotated example at
   [`vault/templates/new-note.md`](vault/templates/new-note.md) — copy it into the
   right PARA root and fill it in (the template dir isn't indexed).
+- **Reuse tags; don't split the vocabulary.** Before tagging a note, see what tags
+  already exist (`python3 scripts/tag_lint.py`, or the `list_tags` MCP tool) and reuse
+  one rather than minting a near-duplicate (`ml`/`machine-learning`, `agents`/`ai-agents`)
+  — a near-miss silently splits a group and erodes retrieval. A tag names a *topic* and
+  stays lowercase kebab-case; keep provenance (which repo or experiment a lesson came
+  from) in the note **body** as a link, not a tag. `scripts/tag_lint.py` reports drift and
+  `scripts/tag_apply.py` backfills a rename/merge/removal under review.
 - Commit it. That's the whole flow: the **pre-commit** hook embeds the note into
   its `.embed.json` sidecar and the **post-commit** hook refreshes the cache, so a
   committed note is **searchable immediately** — no manual step. (`hydrate_cache.py`
