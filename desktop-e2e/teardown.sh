@@ -53,6 +53,20 @@ else
   echo "teardown: branch '$BRANCH' already gone — restoring the index anyway."
 fi
 
+# add_note pushes on every commit, and `git push origin <branch>` needs no upstream — so if
+# this brain has a remote, the disposable branch was created there too. A throwaway branch
+# must not linger on the remote, so delete it there. Best-effort: a network/permission failure
+# must not block the local restore below, but say so loudly so it gets cleaned up by hand.
+if git remote get-url origin >/dev/null 2>&1 &&
+   git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+  echo "teardown: deleting disposable branch from origin …"
+  if git push origin --delete "$BRANCH"; then
+    echo "teardown: removed origin/$BRANCH."
+  else
+    echo "teardown: WARNING — could not delete origin/$BRANCH (network/permission?). Remove it by hand: git push origin --delete $BRANCH" >&2
+  fi
+fi
+
 # Resync the derived layer to the restored vault: drop orphan sidecars + rebuild the cache.
 echo "teardown: rebuilding the derived index (doctor.py --repair) …"
 python3 scripts/doctor.py --repair

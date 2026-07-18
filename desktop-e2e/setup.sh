@@ -9,8 +9,10 @@
 #
 # Claude Desktop's MCP server operates on whatever is checked out in this brain, so a
 # fresh branch IS a throwaway brain: every note the scenarios create commits onto that
-# branch, never onto your working branch. A fresh branch has no upstream, so add_note's
-# push step fails harmlessly — the note is created locally, nothing reaches the remote.
+# branch, never onto your working branch. If this brain has a remote, add_note DOES push
+# the disposable branch there (it runs `git push origin <branch>`, which needs no upstream)
+# — so the test branch surfaces on the remote for the duration of the run. That is harmless
+# and intended: teardown deletes the disposable branch on the remote too, so nothing lingers.
 #
 # This asserts a known-good baseline before branching (clean tree + doctor green) so a
 # later teardown failure can never be blamed on pre-existing drift, and records the base
