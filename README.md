@@ -387,24 +387,35 @@ meaningless — everything routes through `scripts/embedder.py`.)
 > **Tip for Obsidian:** open the `vault/` directory as your vault root (not the
 > repo root), so Obsidian doesn't index scripts or the database as notes.
 
-### Search quality: today, and planned
+### Search: hybrid lexical + semantic
 
-Today search is **dense vector only** — great for *meaning*, weaker on exact tokens
-(error codes, identifiers, rare acronyms) and very short keyword queries, and that gap
-widens as the vault grows. Two planned improvements:
+Search finds a note **two complementary ways** and merges the results:
 
-- **Hybrid lexical + vector search.** Add a **SQLite FTS5** (BM25 keyword) index
-  *alongside* the vector index in the same `data/brain.db`, hydrated by the same
-  commit hooks — **no new dependency, no new file**, still one derived cache. Each
-  query runs both retrievers and their rankings are merged with **Reciprocal Rank
-  Fusion** (rank-based, so incomparable cosine and BM25 scores don't have to be
-  normalized). This closes the exact-match blind spot, and because it lives in the one
-  shared search function the CLI, the AI skill, and the MCP server all benefit at once.
-- **Embedding task prefixes.** Embed notes as `search_document:` and queries as
-  `search_query:` — the asymmetric mode `nomic-embed-text` is trained for. A small,
-  principled correctness change that needs a one-time re-embed of the vault.
+- **By meaning** (dense vector search) — embeds your query and your notes with the same
+  model and returns the nearest by cosine distance. Great for concepts and paraphrase: ask
+  *"how do I handle logins"* and it surfaces your *authentication* note even if the word
+  "login" never appears. Weak on exact tokens — error codes, identifiers, rare acronyms.
+- **By literal words** (a **SQLite FTS5** / BM25 keyword index) — finds notes that contain
+  the exact query terms. The precise complement: strong on identifiers and exact phrases,
+  weak on concepts. FTS5 is built into SQLite, so it's a second table in the *same*
+  `data/brain.db`, hydrated by the same commit hooks — **no new file, no new dependency**.
 
-Both are designed but not yet built; dense vector search is what runs today.
+The two rankings merge with **Reciprocal Rank Fusion**: it looks only at each note's *rank*
+in each list (`score = Σ 1 / (60 + rank)`), so the incomparable cosine and BM25 scores never
+have to be normalized. A note ranked high in *either* list surfaces; high in *both* ranks
+best. The fusion lives in the one shared search function, so the CLI, the AI skill, and the
+Claude Desktop MCP server all get it.
+
+**It's a toggle, defaulted on.** Hybrid is *situational* — it clearly helps a topically
+dense brain (many adjacent notes, where meaning-search can bury the right one behind a
+near-sibling) but slightly hurts a brain of far-apart topics (the keyword leg adds
+cross-topic noise). For vector-only search, set `hybrid_search = false` in
+`config/features.toml` (or `SECOND_BRAIN_HYBRID_SEARCH=0` for one command); `rrf_k` tunes
+the fusion constant.
+
+Notes and queries are also embedded with `nomic-embed-text`'s **task prefixes**
+(`search_document:` on notes, `search_query:` on queries) — the asymmetric mode the model is
+trained for, so a query lands near the note that answers it.
 
 ## Registering a project
 
