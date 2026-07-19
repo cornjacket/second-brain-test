@@ -58,6 +58,26 @@ The `type: glossary` marker is what tools key off. The `Term ? <definition>` car
 your glossary doubles as a flashcard deck. Glossary notes aren't embedded, so there is no
 sidecar to manage.
 
+### Aliases and tags
+
+- **Acronyms and alternate surface forms go in `aliases:`**, never in the title or as a tag —
+  `aliases: [DDL, data definition language]`. Aliases are what `lookup_glossary_term` resolves and
+  what auto-linking matches; a bare `# DDL` title or a `ddl` tag would not.
+- **Tags are topical and shared, not per-term.** A tag buckets a term by domain (`sql`,
+  `retrieval`, `embeddings`), so several terms carry the same one; the scaffold seeds
+  `tags: [glossary]` and you add a topical tag or two by hand. Never mint a per-term tag (`ddl`,
+  `rrf`) — a tag on a single note is a hygiene singleton, and a near-duplicate splits the
+  vocabulary exactly like a near-miss tag.
+
+### Adding a term from Claude Desktop
+
+The MCP tool `add_glossary_term(term, definition, aliases)` does all of this from Claude Desktop:
+it writes the same scaffold, runs the link-on-use sweep, then commits and pushes. It lands the
+term with `tags: [glossary]` only (topical tags stay a hand step, by design). One thing to know —
+**Claude Desktop sees only a tool's *description*, never this README** — so the "what earns a
+term" bar Desktop follows lives in that tool's docstring in `scripts/mcp_server.py`, which is the
+place to change what Desktop is told.
+
 ## Linking terms across the vault
 
 Wherever a glossary term appears in another note's body, link it to its definition with
@@ -76,6 +96,10 @@ python3 scripts/glossary_scan.py --apply     # insert the links across the vault
 - **Automatic on commit:** set `glossary_autolink = true` in `config/features.toml` and the
   pre-commit hook links known terms in each **staged** note before embedding it (off by default —
   it edits your note bodies). All three edit bodies, so the touched notes re-embed on commit.
+
+**Relate two terms with a `[[wikilink]]` in the body, not a shared tag** — e.g.
+`[[data-definition-language]]` ↔ `[[data-manipulation-language]]`. The wikilink is the graph edge
+between them; a tag is only the topical bucket they might share.
 
 
 ## What ships in a fresh brain

@@ -591,7 +591,11 @@ def add_glossary_term(term: str, definition: str, aliases: list[str] | None = No
 
     `term` is the natural form ("ablation study"); it becomes the note title and its filename
     slug. `definition` is one atomic line. `aliases` are other surface forms that should resolve
-    to this term in `lookup_glossary_term` **and** get auto-linked (e.g. ["ablations"]).
+    to this term in `lookup_glossary_term` **and** get auto-linked (e.g. ["ablations"]). Put
+    acronyms and abbreviations in `aliases` too — `["DDL"]` for a term titled *Data Definition
+    Language* — never in the title and never as a tag. The note lands with `tags: [glossary]`;
+    topical tags (e.g. `sql`) are a deliberate hand-curation step in Obsidian, kept out of this
+    write path so the controlled vocabulary is not minted into freely.
 
     On success this **links the term's first occurrence in every note that already mentions it**
     (the vault-wide "link on use" sweep) and commits the term note plus every note it linked, then
