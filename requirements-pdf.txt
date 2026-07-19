@@ -1,0 +1,10 @@
+# Optional dependency — ONLY for PDF ingestion (task #7, see docs/pdf-ingestion.md).
+#
+# The core embed/search/CLI/skill flow does not need this; keep it out of the base
+# requirements.txt so the plumbing and CI stay minimal (stdlib + sqlite-vec + apsw).
+# Install only if you want to add PDFs to the brain:
+#
+#   pip install -r requirements-pdf.txt
+#
+# Provides scripts/pdf_extract.py's `import pypdf`. Pure-Python, no system libraries.
+pypdf>=5.0
