@@ -144,14 +144,23 @@ class FlowTest(unittest.TestCase):
 class _FakeCtx:
     """A stand-in Context whose ``elicit`` returns queued accepted answers — or refuses.
 
-    ``raise_exc`` simulates a client without elicitation (errors); ``action`` other than
-    'accept' simulates a decline/cancel. On accept it reads the schema's single field name and
-    returns the next queued value under it, exactly as the real ElicitationResult does.
+    ``raise_exc`` simulates the request itself failing; ``action`` other than 'accept'
+    simulates a decline/cancel. On accept it reads the schema's single field name and returns
+    the next queued value under it, exactly as the real ElicitationResult does.
+
+    ``declares`` models what the client announced at initialize (task #40) — the question the
+    server must ask *before* eliciting, because a client without the capability returns a
+    synthetic cancel that is indistinguishable on the wire from a human pressing Escape.
     """
-    def __init__(self, answers=None, action="accept", raise_exc=False):
+    def __init__(self, answers=None, action="accept", raise_exc=False,
+                 declares=True, client=("test-client", "1.0")):
         self._answers = list(answers or [])
         self._action = action
         self._raise = raise_exc
+        caps = types.SimpleNamespace(elicitation={} if declares else None)
+        info = types.SimpleNamespace(name=client[0], version=client[1])
+        self.session = types.SimpleNamespace(
+            client_params=types.SimpleNamespace(capabilities=caps, clientInfo=info))
 
     async def elicit(self, message, schema):
         if self._raise:
@@ -188,20 +197,56 @@ class GuidedElicitTest(unittest.TestCase):
             self.assertEqual(captured["para"], "resources")
             self.assertEqual(captured["path"], inbox / "paper.pdf")
 
-    def test_guided_falls_back_when_elicitation_is_unsupported(self):
+    def _run_guided(self, ctx):
+        """Drive add_pdf_guided against a one-PDF inbox; returns (output, ingested-calls)."""
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             inbox = tmp / "inbox"
             inbox.mkdir()
             (inbox / "paper.pdf").write_bytes(b"%PDF-1.4")
             ingested = []
-            ctx = _FakeCtx(raise_exc=True)  # client with no elicitation
             with mock.patch.object(_add_pdf, "REPO_ROOT", tmp), \
                     mock.patch.object(pdf_config, "inbox_dirs", return_value=[str(inbox)]), \
-                    mock.patch.object(_add_pdf, "add_pdf", side_effect=lambda *a: ingested.append(a)):
-                out = asyncio.run(M.add_pdf_guided(ctx))
-            self.assertIn("list_inbox_pdfs", out)     # points at the chat baseline
-            self.assertEqual(ingested, [])            # nothing ingested
+                    mock.patch.object(_add_pdf, "add_pdf",
+                                      side_effect=lambda *a: ingested.append(a)):
+                return asyncio.run(M.add_pdf_guided(ctx)), ingested
+
+    # --- task #40: the four failure modes must be DISTINGUISHABLE -------------------------
+    # The old code returned one string for all of them and asserted the client lacked
+    # elicitation. These tests fail if any two collapse back into the same message.
+
+    def test_unsupported_client_is_named_as_unsupported(self):
+        out, ingested = self._run_guided(_FakeCtx(declares=False, client=("cowork", "9.9")))
+        self.assertIn("did not declare", out)
+        self.assertIn("cowork v9.9", out)              # the client is named, with its version
+        self.assertIn("list_inbox_pdfs", out)          # still points at the chat baseline
+        self.assertEqual(ingested, [])
+
+    def test_cancel_on_a_supporting_client_is_not_called_unsupported(self):
+        """The old bug: pressing Escape told the user their client lacked the feature."""
+        out, ingested = self._run_guided(_FakeCtx(action="cancel", declares=True))
+        self.assertIn("cancel", out.lower())
+        self.assertNotIn("did not declare", out)
+        self.assertIn("source folder", out)            # names the step it stopped at
+        self.assertEqual(ingested, [])
+
+    def test_error_reports_the_reason_rather_than_guessing(self):
+        out, ingested = self._run_guided(_FakeCtx(raise_exc=True, declares=True))
+        self.assertIn("failed", out)
+        self.assertIn("RuntimeError", out)             # the actual cause is surfaced
+        self.assertNotIn("did not declare", out)
+        self.assertEqual(ingested, [])
+
+    def test_the_four_outcomes_produce_four_different_messages(self):
+        """A single assertion that the diagnostic actually discriminates."""
+        msgs = {
+            "unsupported": self._run_guided(_FakeCtx(declares=False))[0],
+            "cancel": self._run_guided(_FakeCtx(action="cancel"))[0],
+            "decline": self._run_guided(_FakeCtx(action="decline"))[0],
+            "error": self._run_guided(_FakeCtx(raise_exc=True))[0],
+        }
+        self.assertEqual(len(set(msgs.values())), 4,
+                         f"failure modes collapsed into the same message: {msgs}")
 
 
 if __name__ == "__main__":

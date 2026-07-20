@@ -798,33 +798,92 @@ def get_pdf_passage(source_file: str, chunk_id: int) -> str:
 # that does not (Claude Desktop chat today), the elicit calls error/cancel and this falls back to
 # the chat-baseline tools — same emitted tool, richer where the client allows it.
 
-_PDF_GUIDED_FALLBACK = (
-    "This client does not support interactive selection (elicitation). Use the chat flow instead: "
-    "call list_inbox_pdfs to see the source folders, list_inbox_pdfs(<folder>) for its PDFs, then "
-    "add_pdf(<path>, <para_root>)."
+_CHAT_FLOW_HINT = (
+    "Use the chat flow instead: call list_inbox_pdfs to see the source folders, "
+    "list_inbox_pdfs(<folder>) for its PDFs, then add_pdf(<path>, <para_root>)."
 )
 
 
+def _client_desc(ctx: Context) -> str:
+    """``name vX`` for the connected client, or ``unknown client`` (task #40).
+
+    Named in every diagnostic: the whole point is to learn *which* surface we were talking to
+    when a guided pass falls back, which is the evidence the 2026-07-20 investigation lacked.
+    """
+    try:
+        info = ctx.session.client_params.clientInfo
+        return f"{info.name} v{info.version}"
+    except Exception:  # noqa: BLE001 — diagnostics must never be the thing that breaks
+        return "unknown client"
+
+
+def _supports_elicitation(ctx: Context) -> bool | None:
+    """Did the client *declare* elicitation at initialize? ``None`` if we cannot tell (task #40).
+
+    This is the question the old code guessed at. It must be asked **before** eliciting, because
+    the wire cannot answer it afterwards: a client without the capability returns a synthetic
+    ``{"action": "cancel"}`` that is byte-identical to a human pressing Escape (see
+    docs/pdf-elicitation.md). Capability is declared once at initialize, so ask there instead.
+    """
+    try:
+        return ctx.session.client_params.capabilities.elicitation is not None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 async def _elicit_choice(ctx: Context, message: str, field: str, choices: list[str]):
-    """Ask the client to pick one of ``choices``; returns (True, value) or (False, None).
+    """Ask the client to pick one of ``choices``; returns ``(ok, value, why)``.
 
     Elicitation allows **primitive** fields only, so a choice is a string field with an ``enum``.
-    The options are runtime values, so the one-field schema is built per call. Any non-accept
-    action — or a client without elicitation, which errors or cancels — yields (False, None), so
-    the caller falls back to the chat flow.
+    The options are runtime values, so the one-field schema is built per call.
+
+    ``why`` distinguishes the ways this can fail, which the caller reports verbatim. The old
+    version collapsed all of them into one outcome and then asserted the client lacked
+    elicitation — a diagnosis it had no basis for, and simply wrong whenever a user cancelled
+    on a client that supports it. The four outcomes are now distinct: ``unsupported`` (the
+    client never declared the capability), ``cancel``/``decline`` (it did, and the answer was
+    no), and ``error: …`` (the request itself failed, with the reason attached).
     """
     from typing import Literal
 
     from pydantic import create_model
 
+    if _supports_elicitation(ctx) is False:
+        return False, None, "unsupported"
+
     schema = create_model("Selection", **{field: (Literal[tuple(choices)], ...)})
     try:
         result = await ctx.elicit(message=message, schema=schema)
-    except Exception:  # noqa: BLE001 — a client lacking elicitation must degrade, not crash
-        return False, None
-    if getattr(result, "action", None) != "accept" or result.data is None:
-        return False, None
-    return True, getattr(result.data, field)
+    except Exception as exc:  # noqa: BLE001 — degrade, but say what happened
+        return False, None, f"error: {type(exc).__name__}: {exc}"
+    action = getattr(result, "action", None)
+    if action != "accept":
+        return False, None, str(action or "no-action")
+    if result.data is None:
+        return False, None, "accepted but returned no data"
+    return True, getattr(result.data, field), "accept"
+
+
+def _guided_fallback(ctx: Context, step: str, why: str) -> str:
+    """Explain *why* the guided pass stopped, naming the client (task #40).
+
+    Never claims "your client does not support elicitation" unless the client actually failed to
+    declare the capability — the old message asserted that unconditionally, so a user who simply
+    pressed Escape was told their client lacked a feature it has.
+    """
+    client = _client_desc(ctx)
+    if why == "unsupported":
+        head = (f"{client} did not declare MCP elicitation support, so the interactive picker "
+                f"cannot render.")
+    elif why in ("cancel", "decline"):
+        head = (f"Selection {why}led at the '{step}' step. NOTE: {client} *does* support "
+                f"elicitation — if you did not cancel this yourself, the client sent a synthetic "
+                f"cancel, which is indistinguishable on the wire from a real one.")
+    elif why.startswith("error:"):
+        head = f"The elicitation request to {client} failed at the '{step}' step — {why[7:]}."
+    else:
+        head = f"Elicitation at the '{step}' step returned '{why}' from {client}."
+    return f"{head} {_CHAT_FLOW_HINT}"
 
 
 @mcp.tool(structured_output=False)
@@ -846,9 +905,9 @@ async def add_pdf_guided(ctx: Context) -> str:
                 f"{', '.join(denied)}." if denied else "")
         return ("No configured source folder is available. Set [pdf].inbox_dirs in "
                 f"config/features.toml, then try again.{tail}")
-    ok, folder = await _elicit_choice(ctx, "Which source folder?", "folder", folders)
+    ok, folder, why = await _elicit_choice(ctx, "Which source folder?", "folder", folders)
     if not ok:
-        return _PDF_GUIDED_FALLBACK
+        return _guided_fallback(ctx, "source folder", why)
 
     try:
         pdfs = [p.name for p in _add_pdf.list_pdfs(folder)]
@@ -857,14 +916,14 @@ async def add_pdf_guided(ctx: Context) -> str:
                 f"file access to the app hosting this server, or pick another source folder.")
     if not pdfs:
         return f"No PDFs in {folder}."
-    ok, filename = await _elicit_choice(ctx, f"Which PDF in {folder}?", "pdf", pdfs)
+    ok, filename, why = await _elicit_choice(ctx, f"Which PDF in {folder}?", "pdf", pdfs)
     if not ok:
-        return _PDF_GUIDED_FALLBACK
+        return _guided_fallback(ctx, "PDF", why)
 
-    ok, para = await _elicit_choice(ctx, "Into which PARA folder?", "para_root",
-                                    list(_add_pdf.PARA_ROOTS))
+    ok, para, why = await _elicit_choice(ctx, "Into which PARA folder?", "para_root",
+                                         list(_add_pdf.PARA_ROOTS))
     if not ok:
-        return _PDF_GUIDED_FALLBACK
+        return _guided_fallback(ctx, "PARA destination", why)
 
     try:
         s = _add_pdf.add_pdf(Path(folder) / filename, para)
