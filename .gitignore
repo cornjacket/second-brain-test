@@ -7,6 +7,13 @@ data/*
 # sidecars ARE committed (see tests/README.md).
 /vault/**/.*.embed.json
 
+# Ingested PDFs are deliberately NOT committed: binaries do not belong in Git, and a
+# PDF stays local-only until Git-LFS lands. Their derived sidecars are already covered
+# by the rule above. Without this rule an ingested PDF is merely *untracked*, so one
+# `git add -A` commits a multi-megabyte binary into the brain — while add_pdf has just
+# told the user PDFs are git-ignored. tests/test_pdf_gitignore.py pins it.
+/vault/**/*.pdf
+
 # Python
 __pycache__/
 *.pyc
