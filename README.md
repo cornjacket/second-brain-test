@@ -145,7 +145,7 @@ python3 scripts/glossary_scan.py --apply   # insert [[term]] links across the va
 To link terms **automatically as you commit** notes, set `glossary_autolink = true` in
 [`config/features.toml`](config/features.toml) — the pre-commit hook then links known terms
 in each staged note (off by default; it edits the note's body). See
-[`vault/glossary/README.md`](vault/glossary/README.md).
+[`GLOSSARY.md`](GLOSSARY.md) for the full glossary guide.
 
 > **Tip — phrase a note the way you'll search for it.** Search ranks a note by how
 > close its *wording and meaning* are to your query, so a note that mirrors the

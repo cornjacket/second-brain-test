@@ -15,10 +15,10 @@ editor and never touches an existing file. The value is for a **human** hand-add
 The term shape is **embedded here**, not a separate scaffold file — the tool owns the shape
 it produces, so it is self-contained and works identically in a freshly created brain and in
 one upgraded via `update_brain.py` (which re-emits tooling but never the vault). See the shape
-documented for hand-authors in `vault/glossary/README.md`.
+documented for hand-authors in `GLOSSARY.md` (at the brain root).
 
 Glossary notes live under `vault/glossary/`, which is **not** a PARA root, so the scaffolded
-note is never embedded or returned by semantic search — see `vault/glossary/README.md`.
+note is never embedded or returned by semantic search — see `GLOSSARY.md`.
 
 Pure stdlib; no dependency on the embedder/cache pipeline.
 """
@@ -35,7 +35,7 @@ GLOSSARY_DIR = REPO_ROOT / "vault" / "glossary"
 # The shared term shape (flashcard-valid: a `Term ? <definition>` card + a #flashcards/ deck
 # tag). `aliases:` is an empty placeholder — fill it with surface forms the MCP glossary
 # lookup should also match (e.g. `aliases: [ablation study, ablations]`). Single source of
-# truth for the shape; `vault/glossary/README.md` documents it for hand-authors.
+# truth for the shape; `GLOSSARY.md` documents it for hand-authors.
 _SCAFFOLD = """\
 ---
 type: glossary

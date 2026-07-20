@@ -1,10 +1,13 @@
 # Glossary — the brain's controlled vocabulary (the **G** in PARA(G))
 
-This folder is a **controlled-vocabulary layer**: one atomic note per **pre-identified**
-term, and every use of that term across the vault links back to its definition. It is a
-*different axis* from PARA — not a fifth actionability bucket, but an orthogonal note **type**,
-a sibling of `templates/`. Hence **PARA(G)**: **P**rojects · **A**reas · **R**esources ·
-**A**rchive, plus a **G**lossary.
+The `vault/glossary/` folder is a **controlled-vocabulary layer**: one atomic note per
+**pre-identified** term, and every use of that term across the vault links back to its
+definition. It is a *different axis* from PARA — not a fifth actionability bucket, but an
+orthogonal note **type**, a sibling of `templates/`. Hence **PARA(G)**: **P**rojects ·
+**A**reas · **R**esources · **A**rchive, plus a **G**lossary.
+
+> This guide lives at the brain **root** (not inside `vault/glossary/`) on purpose: it is
+> documentation *about* the layer, not a note *in* it, so it stays out of the Obsidian graph.
 
 ## What earns a glossary note
 
@@ -37,7 +40,8 @@ the shape below (fill in the definition, then commit):
 python3 scripts/glossary_new.py "retrieval substrates"   # -> glossary/retrieval-substrates.md
 ```
 
-Prefer to hand-write it? Create `<term>.md` here (lowercase-kebab-case) with this shape:
+Prefer to hand-write it? Create `<term>.md` in `vault/glossary/` (lowercase-kebab-case) with
+this shape:
 
 ```markdown
 ---
@@ -74,7 +78,7 @@ sidecar to manage.
 The MCP tool `add_glossary_term(term, definition, aliases)` does all of this from Claude Desktop:
 it writes the same scaffold, runs the link-on-use sweep, then commits and pushes. It lands the
 term with `tags: [glossary]` only (topical tags stay a hand step, by design). One thing to know —
-**Claude Desktop sees only a tool's *description*, never this README** — so the "what earns a
+**Claude Desktop sees only a tool's *description*, never this file** — so the "what earns a
 term" bar Desktop follows lives in that tool's docstring in `scripts/mcp_server.py`, which is the
 place to change what Desktop is told.
 
@@ -104,7 +108,7 @@ between them; a tag is only the topical bucket they might share.
 
 ## What ships in a fresh brain
 
-Just this README and the term template — **no pre-filled terms**. The vocabulary is yours to
-curate. In Obsidian's graph view, color the whole layer at once with a `tag:#glossary` color
-group — every term carries the tag, so it selects the terms without also coloring this README,
-and it does not depend on where you opened the vault (a `path:` query changes with the root).
+The `vault/glossary/` folder ships **empty** — **no pre-filled terms**. The vocabulary is yours
+to curate. In Obsidian's graph view, color the whole layer at once with a `tag:#glossary` color
+group — every term carries the tag, so it selects the terms as a group, and it does not depend on
+where you opened the vault (a `path:` query would change with the root).
