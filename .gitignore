@@ -14,6 +14,9 @@ data/*
 # told the user PDFs are git-ignored. tests/test_pdf_gitignore.py pins it.
 /vault/**/*.pdf
 
+# macOS Finder droppings — never part of a brain.
+.DS_Store
+
 # Python
 __pycache__/
 *.pyc
