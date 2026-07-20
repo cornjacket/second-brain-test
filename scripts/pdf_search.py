@@ -148,3 +148,26 @@ def search_pdf(query: str, k: int = 5, *, result_mode: str | None = None,
         return hits
     finally:
         db.close()
+
+
+def get_passage(source_file: str, chunk_id: int) -> dict | None:
+    """Fetch one passage's **full** text by (source_file, chunk_id); ``None`` if absent.
+
+    Search returns a bounded snippet; this is the "read the whole passage" companion — the
+    passage-fetch tool a Desktop client calls after a search hit to see the full chunk.
+    """
+    if not DB_PATH.exists():
+        raise SystemExit("cache missing; run scripts/hydrate_cache.py first")
+    db = connect(DB_PATH)
+    try:
+        if not _has_pdf_tables(db):
+            return None
+        rows = list(db.execute(
+            "SELECT source_file, chunk_id, page, text FROM pdf_chunks_meta "
+            "WHERE source_file = ? AND chunk_id = ?", (source_file, chunk_id)))
+        if not rows:
+            return None
+        src, cid, page, text = rows[0]
+        return {"source_file": src, "chunk_id": cid, "page": page, "text": text}
+    finally:
+        db.close()
