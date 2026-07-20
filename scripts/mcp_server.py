@@ -70,7 +70,7 @@ def _cap(items: list, *, match: str, kind: str, hint: str) -> list:
     return [*shown, {"_truncated": f"showing {_LIST_CAP} of {len(items)} {kind}{scope}; "
                      f"{omitted} more omitted — {hint}"}]
 
-from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.fastmcp import Context, FastMCP  # noqa: E402
 
 # .../<brain>/scripts/mcp_server.py -> parents[1] == <brain>. Resolved relative to
 # this file so the server works wherever it is installed/symlinked (per-brain).
@@ -775,6 +775,77 @@ def get_pdf_passage(source_file: str, chunk_id: int) -> str:
         return f"No passage {chunk_id} in {source_file}."
     return (f"[{passage['source_file']} p.{passage['page']} chunk {passage['chunk_id']}]\n\n"
             f"{passage['text']}")
+
+
+# --- interactive ingest via elicitation (task #7 follow-up, docs/pdf-elicitation.md) -------
+# A guided picker for clients that implement MCP elicitation (the Claude Code CLI). On a client
+# that does not (Claude Desktop chat today), the elicit calls error/cancel and this falls back to
+# the chat-baseline tools — same emitted tool, richer where the client allows it.
+
+_PDF_GUIDED_FALLBACK = (
+    "This client does not support interactive selection (elicitation). Use the chat flow instead: "
+    "call list_inbox_pdfs to see the source folders, list_inbox_pdfs(<folder>) for its PDFs, then "
+    "add_pdf(<path>, <para_root>)."
+)
+
+
+async def _elicit_choice(ctx: Context, message: str, field: str, choices: list[str]):
+    """Ask the client to pick one of ``choices``; returns (True, value) or (False, None).
+
+    Elicitation allows **primitive** fields only, so a choice is a string field with an ``enum``.
+    The options are runtime values, so the one-field schema is built per call. Any non-accept
+    action — or a client without elicitation, which errors or cancels — yields (False, None), so
+    the caller falls back to the chat flow.
+    """
+    from typing import Literal
+
+    from pydantic import create_model
+
+    schema = create_model("Selection", **{field: (Literal[tuple(choices)], ...)})
+    try:
+        result = await ctx.elicit(message=message, schema=schema)
+    except Exception:  # noqa: BLE001 — a client lacking elicitation must degrade, not crash
+        return False, None
+    if getattr(result, "action", None) != "accept" or result.data is None:
+        return False, None
+    return True, getattr(result.data, field)
+
+
+@mcp.tool(structured_output=False)
+async def add_pdf_guided(ctx: Context) -> str:
+    """Ingest a PDF by picking it interactively: source folder → PDF → PARA destination.
+
+    A guided alternative to the list/add chat flow, using MCP elicitation (client-rendered forms).
+    Works where elicitation is supported (e.g. the Claude Code CLI); on a client that does not
+    support it (Claude Desktop chat today) it falls back to instructing the `list_inbox_pdfs` /
+    `add_pdf` flow. Needs the optional pypdf dependency. Does not commit or push.
+    """
+    folders = [str(f) for f in _add_pdf.inbox_folders() if f.is_dir()]
+    if not folders:
+        return ("No configured source folder exists. Set [pdf].inbox_dirs in "
+                "config/features.toml, then try again.")
+    ok, folder = await _elicit_choice(ctx, "Which source folder?", "folder", folders)
+    if not ok:
+        return _PDF_GUIDED_FALLBACK
+
+    pdfs = [p.name for p in _add_pdf.list_pdfs(folder)]
+    if not pdfs:
+        return f"No PDFs in {folder}."
+    ok, filename = await _elicit_choice(ctx, f"Which PDF in {folder}?", "pdf", pdfs)
+    if not ok:
+        return _PDF_GUIDED_FALLBACK
+
+    ok, para = await _elicit_choice(ctx, "Into which PARA folder?", "para_root",
+                                    list(_add_pdf.PARA_ROOTS))
+    if not ok:
+        return _PDF_GUIDED_FALLBACK
+
+    try:
+        s = _add_pdf.add_pdf(Path(folder) / filename, para)
+    except SystemExit as exc:  # pypdf missing surfaces as SystemExit; make it a normal tool error
+        raise ValueError(str(exc)) from exc
+    return (f"ingested {s['source_file']} — {s['pages']} page(s), {s['chunks']} chunk(s) now "
+            f"searchable. Not committed (PDFs are git-ignored).")
 
 
 def main() -> int:
