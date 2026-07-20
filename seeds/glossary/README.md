@@ -105,5 +105,6 @@ between them; a tag is only the topical bucket they might share.
 ## What ships in a fresh brain
 
 Just this README and the term template — **no pre-filled terms**. The vocabulary is yours to
-curate. In Obsidian's graph view, color the whole layer at once with a `path:glossary/` (or
-`tag:#glossary`) color group.
+curate. In Obsidian's graph view, color the whole layer at once with a `tag:#glossary` color
+group — every term carries the tag, so it selects the terms without also coloring this README,
+and it does not depend on where you opened the vault (a `path:` query changes with the root).
