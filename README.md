@@ -385,6 +385,33 @@ You should see both tool names and a few ranked note paths.
 - **Empty results.** Ollama isn't running or the cache is unbuilt — run
   `python3 scripts/doctor.py --repair`.
 
+## Use from the Claude Code CLI
+
+The Claude Code CLI is a **separate client** from Claude Desktop — it keeps its own MCP registry,
+so registering with Desktop does *not* register here (and vice versa). Register the same server
+once and it's available from any Claude Code session:
+
+```bash
+# from this brain's root — install the MCP dep into the interpreter you'll name below
+pip install -r requirements-mcp.txt
+
+# register (note the `--` separator, absolute paths, and --scope user)
+claude mcp add second-brain --scope user -- /ABSOLUTE/PATH/TO/python3 /ABSOLUTE/PATH/TO/scripts/mcp_server.py
+```
+
+- **`--scope user`** makes the brain usable in **every** project — the right choice for a personal
+  knowledge base. (The CLI's own default is `local`, i.e. this directory only, which we can't
+  change; a brain wants user scope.) Use `--scope project` to share it with a repo's collaborators.
+- Use the **absolute** interpreter path (a bare `python3` may be a pyenv/conda shim without `mcp`);
+  `pyenv which python3` resolves it.
+
+Verify with `claude mcp list` (look for `✔ Connected`) or `/mcp` inside a session.
+
+Because the Claude Code CLI implements MCP **elicitation**, this is where the interactive PDF picker
+works: ask to add a PDF and `add_pdf_guided` prompts you through folder → PDF → PARA as dropdowns.
+(Claude Desktop's chat has no elicitation, so there the same tool falls back to `list_inbox_pdfs` /
+`add_pdf`.)
+
 ## Layout
 
 ```
