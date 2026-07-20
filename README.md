@@ -200,10 +200,22 @@ pip install -r requirements-pdf.txt
 Ingest from the command line — pick a source folder, then a file, then a PARA root:
 
 ```bash
-python3 scripts/add_pdf.py list                     # your configured source folders
-python3 scripts/add_pdf.py list ~/Downloads         # the PDFs in one folder
-python3 scripts/add_pdf.py add ~/Downloads/paper.pdf resources
+python3 scripts/add_pdf.py list                          # your configured source folders
+python3 scripts/add_pdf.py list vault/inbox              # the PDFs in one folder
+python3 scripts/add_pdf.py add vault/inbox/paper.pdf resources
 ```
+
+Drop PDFs into `vault/inbox` — the one source folder configured out of the box.
+
+> **Why not `~/Downloads`?** It looks like the obvious place, and it used to be a default
+> here. macOS keeps `~/Downloads`, `~/Desktop` and `~/Documents` behind per-app consent, and
+> the consent dialog can only be shown to a GUI app. These scripts run as a plain process,
+> so the system refuses them outright — there is no prompt to say yes to. Worse, a refused
+> folder reads as an **empty** one unless something checks, so it looks like you have no PDFs
+> rather than like a permission problem. Move the file into `vault/inbox` (Finder can, even
+> when this cannot) instead of pointing the brain at a protected folder. If you add one
+> anyway, `python3 scripts/doctor.py` names it as unreadable, and listing it fails loudly
+> rather than pretending it is empty.
 
 Source folders, passage size, and result shaping live in the `[pdf]` block of
 [`config/features.toml`](config/features.toml). Ingesting extracts the text, chunks and

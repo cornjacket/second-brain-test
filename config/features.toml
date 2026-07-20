@@ -28,8 +28,12 @@ glossary_autolink = false
 #   chunk_overlap   — fractional overlap between adjacent passages (0.15 = 15%).
 #   result_mode     — passage shaping: "best_per_source" (one per PDF) or "all_chunks".
 #   move_from_inbox — move (true) vs copy (false) the file out of its source folder.
+#   NOTE on adding a system folder here: macOS keeps ~/Downloads, ~/Desktop and ~/Documents
+#   behind per-app consent. A background process gets refused with no prompt to answer, so
+#   such a folder reads as containing nothing. `python3 scripts/doctor.py` names one if you
+#   add it. Prefer moving files into vault/inbox.
 [pdf]
-inbox_dirs      = ["vault/inbox", "~/Downloads"]
+inbox_dirs      = ["vault/inbox"]
 list_sort       = "newest"
 list_page_size  = 20
 chunk_tokens    = 512

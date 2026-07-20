@@ -25,7 +25,11 @@ from pathlib import Path
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "features.toml"
 
 DEFAULTS = {
-    "inbox_dirs": ["vault/inbox", "~/Downloads"],
+    # ``vault/inbox`` only. ``~/Downloads`` was a default and was removed: macOS protects it
+    # (with Desktop and Documents) behind per-app consent, and a non-GUI process cannot be
+    # granted it by any prompt the user could answer — so it shipped as a source folder that
+    # silently produced nothing. Add it back by hand if your platform allows it.
+    "inbox_dirs": ["vault/inbox"],
     "list_sort": "newest",
     "list_page_size": 20,
     "chunk_tokens": 512,
