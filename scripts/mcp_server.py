@@ -40,10 +40,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import add_pdf as _add_pdf  # noqa: E402  (task #7 — folder-first selection + PDF ingest engine)
 import glossary_new  # noqa: E402  (term scaffold + slug — single source of the term shape)
 import glossary_scan  # noqa: E402  (the shared link engine, reused by the write path)
 import hydrate_cache  # noqa: E402
 import note_view  # noqa: E402  (frontmatter_tags — the tag vocabulary for list_tags)
+import pdf_search as _pdf_search  # noqa: E402  (task #7 — passage search + full-passage fetch)
 import search_vault  # noqa: E402
 import tag_hygiene  # noqa: E402  (near-miss rule — shared with tag_lint so the two can't drift)
 
@@ -684,6 +686,95 @@ def add_glossary_term(term: str, definition: str, aliases: list[str] | None = No
             f"committed to {branch}\n{pushed}\n"
             f"reachable via lookup_glossary_term (NOT search — the glossary is excluded by design)"
             f"{term_hint}")
+
+
+# --- PDF ingestion (task #7) --------------------------------------------------------------
+# Chat-baseline selection: list the source folders -> list the PDFs in one -> add_pdf(path, para).
+# MCP *elicitation* (a client-rendered form) is a future enhancement — Claude Desktop's Chat
+# surface does not implement it today (docs/pdf-ingestion.md §2), and chat selection works
+# everywhere. Passage search is a SEPARATE tool from search_second_brain (notes), so the note
+# search contract the CLI and skill depend on is untouched.
+
+def _rel_source(source_file: str) -> str:
+    """Normalize a PDF path to the brain-relative form stored in the chunk tables."""
+    p = Path(source_file)
+    if p.is_absolute():
+        try:
+            return p.resolve().relative_to(BRAIN.resolve()).as_posix()
+        except ValueError:
+            return source_file
+    return source_file
+
+
+def _under_inbox(path: Path) -> bool:
+    """True if ``path`` is inside a configured source folder — the ingest security boundary."""
+    p = path.resolve()
+    for folder in _add_pdf.inbox_folders():
+        f = folder.resolve()
+        if p == f or f in p.parents:
+            return True
+    return False
+
+
+@mcp.tool(structured_output=False)
+def list_inbox_pdfs(folder: str = "") -> list[dict]:
+    """List the configured PDF source folders, or the PDFs inside one (folder-first selection).
+
+    Call with no ``folder`` to see the source folders (from the ``[pdf]`` config, priority order),
+    then call again with one folder's ``path`` to list its PDFs (sorted + paginated per config).
+    Pick a PDF's ``path`` and ingest it with ``add_pdf``. Empty if a folder holds no PDFs.
+    """
+    if not folder:
+        return [{"folder": str(f), "exists": f.is_dir()} for f in _add_pdf.inbox_folders()]
+    return [{"filename": p.name, "path": str(p)} for p in _add_pdf.list_pdfs(folder)]
+
+
+@mcp.tool(structured_output=False)
+def add_pdf(pdf_path: str, para_root: str) -> str:
+    """Ingest a PDF: move it into ``vault/<para_root>/``, then chunk, embed, and index it.
+
+    ``pdf_path`` must be a file inside one of the configured source folders (see
+    ``list_inbox_pdfs``); ``para_root`` is one of projects/areas/resources/archive. On success the
+    PDF's passages become searchable via ``search_pdf_passages``. Needs the optional pypdf
+    dependency (``pip install -r requirements-pdf.txt``). Does **not** commit or push — the PDF and
+    its index are git-ignored.
+    """
+    p = Path(pdf_path)
+    if not p.is_absolute():
+        p = BRAIN / pdf_path
+    if not _under_inbox(p):
+        raise ValueError(f"refusing to ingest a file outside the configured source folders: "
+                         f"{pdf_path} (call list_inbox_pdfs to see them)")
+    try:
+        s = _add_pdf.add_pdf(p, para_root)
+    except SystemExit as exc:  # pypdf missing surfaces as SystemExit; make it a normal tool error
+        raise ValueError(str(exc)) from exc
+    return (f"ingested {s['source_file']} — {s['pages']} page(s), {s['chunks']} chunk(s) now "
+            f"searchable ({'moved' if s['moved'] else 'copied'}). Not committed (PDFs are git-ignored).")
+
+
+@mcp.tool(structured_output=False)
+def search_pdf_passages(query: str, k: int = 5, source_file: str = "") -> list[dict]:
+    """Search ingested PDFs and return the best passages — which document, page, and a snippet.
+
+    Complements ``search_second_brain`` (which searches notes): this returns *passages* from PDFs,
+    each with the PDF's **absolute** path, its ``chunk_id`` and ``page``, a ``snippet``, and a
+    ``score``. Pass ``source_file`` (a PDF path from a hit) to search WITHIN one document ("where in
+    this PDF is X"). Read a passage in full with ``get_pdf_passage``. Empty if no PDFs are ingested.
+    """
+    hits = _pdf_search.search_pdf(query, k, source_file=_rel_source(source_file) or None)
+    return [{"source_file": str(BRAIN / h.source_file), "chunk_id": h.chunk_id, "page": h.page,
+             "snippet": h.snippet, "score": round(h.score, 4)} for h in hits]
+
+
+@mcp.tool(structured_output=False)
+def get_pdf_passage(source_file: str, chunk_id: int) -> str:
+    """Return the FULL text of one PDF passage, by ``source_file`` + ``chunk_id`` from a search hit."""
+    passage = _pdf_search.get_passage(_rel_source(source_file), chunk_id)
+    if passage is None:
+        return f"No passage {chunk_id} in {source_file}."
+    return (f"[{passage['source_file']} p.{passage['page']} chunk {passage['chunk_id']}]\n\n"
+            f"{passage['text']}")
 
 
 def main() -> int:
