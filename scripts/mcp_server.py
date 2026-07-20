@@ -844,14 +844,17 @@ async def _elicit_choice(ctx: Context, message: str, field: str, choices: list[s
     client never declared the capability), ``cancel``/``decline`` (it did, and the answer was
     no), and ``error: …`` (the request itself failed, with the reason attached).
     """
-    from typing import Literal
-
-    from pydantic import create_model
+    from pydantic import Field, create_model
 
     if _supports_elicitation(ctx) is False:
         return False, None, "unsupported"
 
-    schema = create_model("Selection", **{field: (Literal[tuple(choices)], ...)})
+    # A ``str`` field with an ``enum`` in json_schema_extra — NOT ``Literal[...]``. The MCP SDK's
+    # elicitation validator accepts only str/int/float/bool (and list[str]) annotations and rejects
+    # a ``Literal`` before anything reaches the wire, so the enum must ride on a plain ``str``.
+    schema = create_model(
+        "Selection", **{field: (str, Field(..., json_schema_extra={"enum": list(choices)}))}
+    )
     try:
         result = await ctx.elicit(message=message, schema=schema)
     except Exception as exc:  # noqa: BLE001 — degrade, but say what happened
