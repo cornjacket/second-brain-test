@@ -82,9 +82,32 @@ class SecurityTest(unittest.TestCase):
             with mock.patch.object(_add_pdf, "REPO_ROOT", tmp), \
                     mock.patch.object(pdf_config, "inbox_dirs", return_value=[str(inbox)]):
                 folders = M.list_inbox_pdfs()
-                self.assertEqual(folders, [{"folder": str(inbox), "exists": True}])
+                self.assertEqual(folders,
+                                 [{"folder": str(inbox), "exists": True, "readable": True}])
                 files = M.list_inbox_pdfs(str(inbox))
                 self.assertEqual([f["filename"] for f in files], ["a.pdf"])
+
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses directory permissions")
+    def test_list_inbox_pdfs_reports_denied_rather_than_empty(self):
+        """An unreadable source folder must be visibly denied, never silently empty (task #38)."""
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            denied = tmp / "denied"
+            denied.mkdir()
+            (denied / "a.pdf").write_bytes(b"%PDF-1.4")
+            os.chmod(denied, 0o000)
+            try:
+                with mock.patch.object(_add_pdf, "REPO_ROOT", tmp), \
+                        mock.patch.object(pdf_config, "inbox_dirs", return_value=[str(denied)]):
+                    self.assertEqual(
+                        M.list_inbox_pdfs(),
+                        [{"folder": str(denied), "exists": True, "readable": False}])
+                    # listing it must fail loudly rather than return an empty file list
+                    with self.assertRaises(ValueError) as cm:
+                        M.list_inbox_pdfs(str(denied))
+                    self.assertIn("permission denied", str(cm.exception).lower())
+            finally:
+                os.chmod(denied, 0o700)
 
 
 @unittest.skipUnless(HAVE_MCP and HAVE_PYPDF, "needs mcp + pypdf")

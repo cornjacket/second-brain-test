@@ -45,6 +45,36 @@ class SelectionTest(unittest.TestCase):
             self.assertEqual(names, {"a.pdf", "b.pdf"})
             self.assertEqual(add_pdf.list_pdfs(folder / "nope"), [])
 
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses directory permissions")
+    def test_unreadable_folder_raises_instead_of_looking_empty(self):
+        """A denied folder must NOT be reported as an empty one (task #38).
+
+        The bug this pins: ``Path.glob`` swallows ``PermissionError`` and yields nothing, so a
+        folder holding PDFs we may not read returned ``[]`` — the same answer as a genuinely
+        empty folder. The fixture is a directory the test process really cannot enumerate;
+        an empty-folder fixture would reproduce the blind spot rather than catch it.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td) / "denied"
+            folder.mkdir()
+            (folder / "secret.pdf").write_bytes(b"%PDF-1.4")   # present but unreachable
+            os.chmod(folder, 0o000)
+            try:
+                self.assertFalse(add_pdf.folder_readable(folder))
+                with self.assertRaises(PermissionError):
+                    add_pdf.list_pdfs(folder)
+                # …and the two cases stay distinguishable: readable-and-empty still returns [].
+                empty = Path(td) / "empty"
+                empty.mkdir()
+                self.assertTrue(add_pdf.folder_readable(empty))
+                self.assertEqual(add_pdf.list_pdfs(empty), [])
+            finally:
+                os.chmod(folder, 0o700)  # let TemporaryDirectory clean up
+
+    def test_folder_readable_is_false_for_absent_folder(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertFalse(add_pdf.folder_readable(Path(td) / "nope"))
+
     def test_list_pdfs_alphabetical_and_paginated(self):
         with tempfile.TemporaryDirectory() as td, \
                 mock.patch.object(pdf_config, "list_sort", return_value="alphabetical"):

@@ -723,10 +723,26 @@ def list_inbox_pdfs(folder: str = "") -> list[dict]:
     Call with no ``folder`` to see the source folders (from the ``[pdf]`` config, priority order),
     then call again with one folder's ``path`` to list its PDFs (sorted + paginated per config).
     Pick a PDF's ``path`` and ingest it with ``add_pdf``. Empty if a folder holds no PDFs.
+
+    Each source folder reports ``exists`` **and** ``readable``. A folder can exist yet be
+    unreadable — macOS protects ``~/Downloads``, ``~/Desktop`` and ``~/Documents`` by default —
+    and listing one raises rather than reporting it as empty, so "no PDFs here" always means
+    what it says. Grant the app hosting this server file access, or use a folder outside the
+    protected set (the brain's own ``vault/inbox``).
     """
     if not folder:
-        return [{"folder": str(f), "exists": f.is_dir()} for f in _add_pdf.inbox_folders()]
-    return [{"filename": p.name, "path": str(p)} for p in _add_pdf.list_pdfs(folder)]
+        return [{"folder": str(f), "exists": f.is_dir(),
+                 "readable": _add_pdf.folder_readable(f)} for f in _add_pdf.inbox_folders()]
+    try:
+        pdfs = _add_pdf.list_pdfs(folder)
+    except PermissionError as exc:
+        raise ValueError(
+            f"cannot read {folder}: permission denied. The folder exists but its contents are "
+            f"not listable, so this is NOT an empty folder — do not report it as one. On macOS, "
+            f"Downloads/Desktop/Documents are protected by default: grant file access to the app "
+            f"hosting this server, or use a source folder outside the protected set."
+        ) from exc
+    return [{"filename": p.name, "path": str(p)} for p in pdfs]
 
 
 @mcp.tool(structured_output=False)
@@ -820,15 +836,25 @@ async def add_pdf_guided(ctx: Context) -> str:
     support it (Claude Desktop chat today) it falls back to instructing the `list_inbox_pdfs` /
     `add_pdf` flow. Needs the optional pypdf dependency. Does not commit or push.
     """
-    folders = [str(f) for f in _add_pdf.inbox_folders() if f.is_dir()]
+    # Only offer folders we can actually read — a denied folder would otherwise be picked and
+    # then present as "No PDFs in <folder>", sending the user to look for a file that is there.
+    present = [f for f in _add_pdf.inbox_folders() if f.is_dir()]
+    folders = [str(f) for f in present if _add_pdf.folder_readable(f)]
+    denied = [str(f) for f in present if not _add_pdf.folder_readable(f)]
     if not folders:
-        return ("No configured source folder exists. Set [pdf].inbox_dirs in "
-                "config/features.toml, then try again.")
+        tail = (f" {len(denied)} folder(s) exist but cannot be read (permission denied): "
+                f"{', '.join(denied)}." if denied else "")
+        return ("No configured source folder is available. Set [pdf].inbox_dirs in "
+                f"config/features.toml, then try again.{tail}")
     ok, folder = await _elicit_choice(ctx, "Which source folder?", "folder", folders)
     if not ok:
         return _PDF_GUIDED_FALLBACK
 
-    pdfs = [p.name for p in _add_pdf.list_pdfs(folder)]
+    try:
+        pdfs = [p.name for p in _add_pdf.list_pdfs(folder)]
+    except PermissionError:
+        return (f"Cannot read {folder} — permission denied. This is not an empty folder; grant "
+                f"file access to the app hosting this server, or pick another source folder.")
     if not pdfs:
         return f"No PDFs in {folder}."
     ok, filename = await _elicit_choice(ctx, f"Which PDF in {folder}?", "pdf", pdfs)

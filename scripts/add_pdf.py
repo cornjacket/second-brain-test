@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -52,14 +53,44 @@ def inbox_folders() -> list[Path]:
     return out
 
 
+def _probe_readable(folder: Path) -> None:
+    """Raise ``PermissionError`` if ``folder`` exists but cannot be enumerated.
+
+    ``Path.glob`` **swallows** ``PermissionError`` and yields nothing, so a folder we are not
+    allowed to read otherwise looks exactly like one holding no PDFs — a silent wrong answer,
+    not an error. ``scandir`` raises on open, so this probe restores the distinction without
+    changing which files ``glob`` then matches. Hit for real on macOS, where ``~/Downloads``
+    (a default source folder) is protected by default and a non-GUI process gets no consent
+    prompt — just ``EPERM``.
+    """
+    with os.scandir(folder) as it:
+        next(it, None)
+
+
+def folder_readable(folder) -> bool:
+    """Can ``folder``'s contents be listed? False for absent, denied, or not-a-directory."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return False
+    try:
+        _probe_readable(folder)
+    except OSError:
+        return False
+    return True
+
+
 def list_pdfs(folder, *, offset: int = 0, limit: int | None = None) -> list[Path]:
     """PDFs directly in ``folder``, sorted per config, one page at a time.
 
     ``list_sort`` picks newest-first (mtime) or alphabetical; ``limit`` defaults to the
-    configured page size. A missing folder yields ``[]``.
+    configured page size. A missing folder yields ``[]``; one that exists but cannot be read
+    raises ``PermissionError`` rather than passing off a denial as an empty folder.
     """
     folder = Path(folder)
-    pdfs = [p for p in folder.glob("*.pdf") if p.is_file()] if folder.is_dir() else []
+    if not folder.is_dir():
+        return []
+    _probe_readable(folder)
+    pdfs = [p for p in folder.glob("*.pdf") if p.is_file()]
     if pdf_config.list_sort() == "newest":
         pdfs.sort(key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
     else:
@@ -137,10 +168,22 @@ def main(argv=None) -> int:
     if args.cmd == "list":
         if args.folder is None:
             for i, f in enumerate(inbox_folders(), 1):
-                mark = "" if f.is_dir() else "  (missing)"
+                if not f.is_dir():
+                    mark = "  (missing)"
+                elif not folder_readable(f):
+                    mark = "  (unreadable — permission denied)"
+                else:
+                    mark = ""
                 print(f"{i}. {f}{mark}")
         else:
-            pdfs = list_pdfs(args.folder)
+            try:
+                pdfs = list_pdfs(args.folder)
+            except PermissionError:
+                print(f"add_pdf: cannot read {args.folder} — permission denied. This is not an "
+                      f"empty folder; grant this process access to it (on macOS, "
+                      f"Downloads/Desktop/Documents are protected by default) or use another "
+                      f"source folder.", file=sys.stderr)
+                return 1
             if not pdfs:
                 print(f"(no PDFs in {args.folder})")
             for i, p in enumerate(pdfs, 1):

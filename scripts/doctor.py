@@ -110,6 +110,28 @@ def check_config(rep: Report) -> str:
     return backend_name()
 
 
+def check_pdf_sources(rep: Report) -> None:
+    """Report each configured PDF source folder as usable, absent, or unreadable (task #38).
+
+    A folder that exists but cannot be listed is the dangerous case: the listing path reports it
+    as holding no PDFs unless something says otherwise, so name it here. Informational, not a
+    problem — a protected or absent source folder is a local setup fact, not a broken brain.
+    """
+    try:
+        import add_pdf as _ap
+    except Exception:  # pragma: no cover - PDF support is optional
+        return
+    for f in _ap.inbox_folders():
+        if not f.is_dir():
+            rep.info(f"PDF source folder absent (fine — nothing to ingest from): {f}")
+        elif not _ap.folder_readable(f):
+            rep.info(f"PDF source folder UNREADABLE (permission denied) — it will look empty when "
+                     f"listed, not broken: {f}. On macOS, Downloads/Desktop/Documents are "
+                     f"protected by default; grant access or use the brain's vault/inbox.")
+        else:
+            rep.ok(f"PDF source folder readable: {f}")
+
+
 def check_ollama(rep: Report) -> None:
     import os
     import urllib.error
@@ -448,6 +470,7 @@ def main(argv: list[str]) -> int:
     backend = check_config(rep)
     if backend == "ollama":
         check_ollama(rep)
+    check_pdf_sources(rep)
 
     if args.repair:
         print("repair:")
