@@ -30,6 +30,7 @@ Exit ``0`` = healthy & consistent; non-zero = at least one problem remains.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -174,11 +175,95 @@ def db_source_files() -> set[str] | None:
         db.close()
 
 
+def db_pdf_sources() -> set[str] | None:
+    """Distinct PDF sources in the chunk cache; ``None`` if the db is absent, ``set()`` if the
+    PDF tables were never created (a brain that has ingested no PDF — task #7)."""
+    if not DB_PATH.exists():
+        return None
+    from db import connect
+
+    db = connect(DB_PATH)
+    try:
+        try:
+            return {row[0] for row in db.execute("SELECT DISTINCT source_file FROM pdf_chunks_meta")}
+        except Exception:  # noqa: BLE001 — table absent until the first PDF is ingested
+            return set()
+    finally:
+        db.close()
+
+
+def pdf_source_for_sidecar(sc: Path) -> str:
+    """Map a chunk sidecar ``…/.<name>.embed.json`` back to its source ``…/<name>`` (task #7)."""
+    name = sc.name[len("."):-len(".embed.json")]  # ".paper.pdf.embed.json" -> "paper.pdf"
+    return (sc.parent / name).relative_to(REPO_ROOT).as_posix()
+
+
+def _pypdf_available() -> bool:
+    try:
+        import pypdf  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _scan_pdf(pdf_sidecars: dict, active: str) -> dict:
+    """Consistency of chunked PDF sources: sidecar ↔ PDF ↔ cache (task #7, mirrors the note pass).
+
+    Staleness (the sidecar's content_hash no longer matches the PDF's current extracted text)
+    needs pypdf to re-extract; without it, those sources are reported *unverifiable*, not clean.
+    """
+    orphan, mixed, bad_dim, stale, unverifiable = set(), set(), set(), set(), set()
+    have_pypdf = _pypdf_available()
+    for source, (sc, payload) in pdf_sidecars.items():
+        pdf_here = (REPO_ROOT / source).exists()
+        if not pdf_here:
+            orphan.add(source)
+        if payload.get("type") != active:
+            mixed.add(source)
+        if any(len(ch.get("vector", [])) != EMBED_DIM for ch in payload.get("chunks", [])):
+            bad_dim.add(source)
+        if pdf_here:
+            if not have_pypdf:
+                unverifiable.add(source)
+            else:
+                try:
+                    import pdf_extract
+                    doc = pdf_extract.extract(REPO_ROOT / source)
+                    current = "sha256:" + hashlib.sha256(doc.text.encode("utf-8")).hexdigest()
+                    if payload.get("content_hash") != current:
+                        stale.add(source)
+                except Exception:  # noqa: BLE001 — a broken PDF can't be re-verified; say so
+                    unverifiable.add(source)
+
+    db_rows = db_pdf_sources()
+    # If the whole cache is gone, the note pass already reports it — don't double-count here.
+    missing_from_db = set() if db_rows is None else (set(pdf_sidecars) - orphan) - db_rows
+
+    return {"sidecars": {s: sc for s, (sc, _) in pdf_sidecars.items()},
+            "orphan": orphan, "mixed": mixed, "bad_dim": bad_dim, "stale": stale,
+            "unverifiable": unverifiable, "missing_from_db": missing_from_db}
+
+
 def scan() -> dict:
     """Pure scan of the three layers; returns the discrepancy sets (no output)."""
     notes = para_notes()
-    sidecars = {note_for_sidecar(sc): sc for sc in all_sidecars()}
     active = backend_id()
+
+    # Split sidecars by content: a note sidecar has a single "vector"; a PDF sidecar (task #7)
+    # has a "chunks" list. Both live under PARA roots and match .*.embed.json, so without this
+    # a PDF sidecar would be mis-read as an orphan, wrong-dim note.
+    sidecars: dict[str, Path] = {}
+    pdf_sidecars: dict[str, tuple[Path, dict]] = {}
+    for sc in all_sidecars():
+        try:
+            payload = json.loads(sc.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            sidecars[note_for_sidecar(sc)] = sc  # unreadable — flagged in the note pass below
+            continue
+        if "chunks" in payload:
+            pdf_sidecars[pdf_source_for_sidecar(sc)] = (sc, payload)
+        else:
+            sidecars[note_for_sidecar(sc)] = sc
 
     bad_dim: set[str] = set()
     mixed: set[str] = set()
@@ -233,6 +318,7 @@ def scan() -> dict:
         "unreadable": unreadable,
         "stale_hash": stale_hash,
         "db_missing": rows is None,
+        "pdf": _scan_pdf(pdf_sidecars, active),
     }
 
 
@@ -263,11 +349,30 @@ def report_consistency(rep: Report, st: dict) -> None:
         rep.fail(f"stale embedding (vector predates the note's current content — re-embed): "
                  f"{note}")
 
+    # PDF chunk sources (task #7) — mirrors the note checks at the document grain.
+    pdf = st.get("pdf", {})
+    for source in sorted(pdf.get("orphan", ())):
+        rep.fail(f"orphan PDF sidecar (source PDF gone): "
+                 f"{pdf['sidecars'][source].relative_to(REPO_ROOT).as_posix()}")
+    if not st["db_missing"]:
+        for source in sorted(pdf.get("missing_from_db", ())):
+            rep.fail(f"PDF not in cache (drift): {source}")
+    for source in sorted(pdf.get("mixed", ())):
+        rep.fail(f"PDF sidecar backend != active ({st['active']}): {source}")
+    for source in sorted(pdf.get("bad_dim", ())):
+        rep.fail(f"PDF sidecar has a chunk with wrong vector dim (expected {EMBED_DIM}): {source}")
+    for source in sorted(pdf.get("stale", ())):
+        rep.fail(f"stale PDF embedding (chunks predate the PDF's current text — re-ingest): {source}")
+    for source in sorted(pdf.get("unverifiable", ())):
+        rep.info(f"PDF staleness unverifiable without pypdf (install requirements-pdf.txt): {source}")
+
+    pdf_problem = any(pdf.get(k) for k in ("orphan", "missing_from_db", "mixed", "bad_dim", "stale"))
     clean = not any(st[k] for k in (
         "notes_wo_sidecar", "orphan_sidecars", "missing_from_db", "stale_in_db",
-        "mixed", "bad_dim", "unreadable", "stale_hash")) and not st["db_missing"]
+        "mixed", "bad_dim", "unreadable", "stale_hash")) and not st["db_missing"] and not pdf_problem
     if clean:
-        rep.ok(f"vault↔sidecar↔db in sync ({len(st['notes'])} note(s))")
+        pdf_tail = f" + {len(pdf.get('sidecars', {}))} pdf(s)" if pdf.get("sidecars") else ""
+        rep.ok(f"vault↔sidecar↔db in sync ({len(st['notes'])} note(s){pdf_tail})")
 
 
 # --------------------------------------------------------------------------- #
@@ -290,6 +395,33 @@ def do_repair(st: dict) -> None:
     for note in sorted(to_embed):
         es.write_sidecar(note, force=True)  # repair must rewrite even a hash-matching sidecar
         print(f"  repair: embedded {note}")
+
+    # 2b. PDF sources (task #7): drop orphan chunk sidecars, then re-ingest stale / wrong-backend
+    #     / wrong-dim ones — which needs pypdf to re-extract. Missing-from-cache is fixed by the
+    #     rebuild below (hydrate reloads chunk sidecars).
+    pdf = st.get("pdf", {})
+    for source in sorted(pdf.get("orphan", ())):
+        sc = pdf["sidecars"][source]
+        sc.unlink()
+        print(f"  repair: removed orphan PDF sidecar {sc.relative_to(REPO_ROOT).as_posix()}")
+    reingest = ((pdf.get("stale", set()) | pdf.get("mixed", set()) | pdf.get("bad_dim", set()))
+                - pdf.get("orphan", set()))
+    if reingest:
+        if _pypdf_available():
+            import pdf_config
+            import pdf_extract
+            import embed_pdf
+            for source in sorted(reingest):
+                doc = pdf_extract.extract(REPO_ROOT / source)
+                payload = embed_pdf.sidecar_payload(
+                    source, doc.text, doc.page_spans,
+                    chunk_tokens=pdf_config.chunk_tokens(), chunk_overlap=pdf_config.chunk_overlap())
+                pdf["sidecars"][source].write_text(json.dumps(payload, indent=2) + "\n",
+                                                   encoding="utf-8")
+                print(f"  repair: re-embedded PDF {source}")
+        else:
+            print("  repair: cannot re-embed PDFs without pypdf "
+                  "(install requirements-pdf.txt); rebuilding cache only")
 
     # 3. Rebuild the cache from the reconciled sidecars. hydrate wipes+rebuilds,
     #    which resolves both missing-from-db and stale-in-db in one pass.

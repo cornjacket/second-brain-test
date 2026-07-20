@@ -184,6 +184,38 @@ python3 scripts/doctor.py      # is the brain ready & consistent? (deps, Ollama,
 checks the live runtime (Ollama up, model pulled) and that the vault, sidecars, and
 cache all agree — add `--repair` to fix drift.
 
+## Add a PDF (optional)
+
+Notes are the core of the brain, but you can also make a **PDF searchable**. A PDF is
+split into passages ("chunks"), each embedded, so a search hit points at *the passage on
+page 12* — not just "somewhere in this file." The PDF is stored in the vault but
+**git-ignored** (its search index too), so ingesting one never commits or pushes.
+
+One-time — install the optional parser:
+
+```bash
+pip install -r requirements-pdf.txt
+```
+
+Ingest from the command line — pick a source folder, then a file, then a PARA root:
+
+```bash
+python3 scripts/add_pdf.py list                     # your configured source folders
+python3 scripts/add_pdf.py list ~/Downloads         # the PDFs in one folder
+python3 scripts/add_pdf.py add ~/Downloads/paper.pdf resources
+```
+
+Source folders, passage size, and result shaping live in the `[pdf]` block of
+[`config/features.toml`](config/features.toml). Ingesting extracts the text, chunks and
+embeds it, and loads it into the cache in one step — the passages are searchable
+immediately.
+
+**From Claude Desktop**, the same flow is four MCP tools: `list_inbox_pdfs` (browse the
+source folders), `add_pdf` (ingest a chosen file), `search_pdf_passages` (find passages —
+returns document, page, and a snippet), and `get_pdf_passage` (read one in full). Note
+search (`search_second_brain`) and PDF-passage search are separate tools, so ask for
+whichever you want — or both.
+
 ## Query it from any project (AI skill)
 
 The point of a second brain is for an **AI to consult it while you build something
