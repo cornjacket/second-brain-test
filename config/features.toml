@@ -18,3 +18,21 @@
 hybrid_search = true
 rrf_k = 60
 glossary_autolink = false
+
+# PDF ingestion (scripts/add_pdf.py, scripts/pdf_config.py). Read only when you add a
+# PDF; a brain that never ingests one ignores this block. See the README "Add a PDF".
+#   inbox_dirs      — source folders to import from, priority order (first shown first).
+#   list_sort       — order a folder's PDFs: "newest" (by modified time) or "alphabetical".
+#   list_page_size  — how many entries to show before paginating.
+#   chunk_tokens    — target passage size, in whitespace-word tokens (~512).
+#   chunk_overlap   — fractional overlap between adjacent passages (0.15 = 15%).
+#   result_mode     — passage shaping: "best_per_source" (one per PDF) or "all_chunks".
+#   move_from_inbox — move (true) vs copy (false) the file out of its source folder.
+[pdf]
+inbox_dirs      = ["vault/inbox", "~/Downloads"]
+list_sort       = "newest"
+list_page_size  = 20
+chunk_tokens    = 512
+chunk_overlap   = 0.15
+result_mode     = "best_per_source"
+move_from_inbox = true
