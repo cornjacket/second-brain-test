@@ -40,13 +40,16 @@ def main() -> int:
         return 0  # not in a git repo; do nothing
 
     today_iso = today.isoformat()
+    # The body structure is stated once, in project-status-guide.md at the repo
+    # root — this message points there rather than restating it, so the two
+    # can't drift (they did: this hook used to say "one short paragraph").
     fresh_template = (
         "Before doing other work, ask the user for today's plan and "
         "overwrite `daily-plan.md` with this header:\n\n"
         f"    # Daily plan — {today_iso}\n\n"
-        "Body: one short paragraph of intent plus a small ASCII diagram "
-        "of the day's shape (timeline, flow, milestones). "
-        "project-status aggregates this across tracked repos."
+        "Then read the 'Body structure' section of `project-status-guide.md` "
+        "(repo root) and follow it. project-status aggregates this file across "
+        "every tracked repo, so the structure is what makes it legible."
     )
 
     if not plan.exists():
