@@ -1,4 +1,4 @@
-# Daily plan — 2026-07-27
+# Daily plan — 2026-07-28
 
 **What this repo is (for a newcomer):** `second-brain-test` is the *golden reference* for the devkit
 next door — a hand-built, known-good copy of a generated brain. Features are prototyped **here by
@@ -17,6 +17,6 @@ with no mid-prototype work parked.
 
 ```
  workbench: prototype #39 by hand → vendor into the devkit
-   7/21 ▶ marked decorative block: strip from embed + hash · prove edit-doesn't-re-embed
+   7/28 ▶ marked decorative block: strip from embed + hash · prove edit-doesn't-re-embed
    guardrail: backend = test; prototype → vendor → devkit CI stays green
 ```
