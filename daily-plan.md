@@ -1,4 +1,4 @@
-# Daily plan — 2026-07-21
+# Daily plan — 2026-07-27
 
 **What this repo is (for a newcomer):** `second-brain-test` is the *golden reference* for the devkit
 next door — a hand-built, known-good copy of a generated brain. Features are prototyped **here by
