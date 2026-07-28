@@ -457,7 +457,10 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     projects = a goal-bound effort; areas = an ongoing responsibility; resources = durable
     reference; archive = inactive. `title` becomes both the H1 and the kebab-case filename.
     `body` is Markdown (no frontmatter, no H1 — both are generated). Link related notes with
-    [[wikilinks]].
+    [[wikilinks]]. If the body contains a diagram or ASCII art, fence it between
+    `<!-- second-brain:no-embed:begin -->` and `<!-- second-brain:no-embed:end -->`: the note is
+    embedded as ONE vector, and box-drawing characters cost about a token each, so unfenced art
+    both dilutes the vector and can overflow the embedder's context outright.
 
     Refuses to overwrite an existing note. Committing is what embeds it (the pre-commit hook),
     so it is searchable immediately; the push is what makes it visible to the brain's other

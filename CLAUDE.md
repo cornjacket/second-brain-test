@@ -53,6 +53,14 @@ is what happened; the *lesson* you drew from it is what transfers.
   Link related notes with `[[wikilinks]]`. Start from the annotated example at
   [`vault/templates/new-note.md`](vault/templates/new-note.md) — copy it into the
   right PARA root and fill it in (the template dir isn't indexed).
+- **Fence diagrams and ASCII art in a no-embed block.** Wrap any decorative region
+  between `<!-- second-brain:no-embed:begin -->` and `<!-- second-brain:no-embed:end -->`:
+  it stays in the file (Obsidian hides the markers) but never reaches the embedder. A
+  note is one vector, so unfenced art dilutes it — and box-drawing characters cost about
+  a token each, so a note far short of the ~300-line guideline can still overflow the
+  model's context and fail to embed. **The embed budget is tokens, not lines.** Editing
+  inside the block is free: the excluded region is invisible to the content hash too, so
+  redrawing a diagram triggers no re-embed and no `doctor.py` staleness.
 - **Reuse tags; don't split the vocabulary.** Before tagging a note, see what tags
   already exist (`python3 scripts/tag_lint.py`, or the `list_tags` MCP tool) and reuse
   one rather than minting a near-duplicate (`ml`/`machine-learning`, `agents`/`ai-agents`)

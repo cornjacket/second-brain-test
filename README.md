@@ -164,6 +164,36 @@ in each staged note (off by default; it edits the note's body). See
 > It's not that a question is special — it's that the note now matches *how you'll
 > ask*. The closer the note's language is to your future query, the higher it ranks.
 
+**Keep decorative content out of the vector** — a note is embedded as **one** vector, so
+an ASCII roadmap or box-drawn diagram competes with the prose for it. Wrap anything that
+is *visual rather than meaningful* in a **no-embed block** and it stays in the file for
+you while never reaching the embedder:
+
+````markdown
+Prose above is embedded as usual.
+
+<!-- second-brain:no-embed:begin -->
+```
+ ┌─────────┐   ┌─────────┐
+ │ collect │──▶│ distill │
+ └─────────┘   └─────────┘
+```
+<!-- second-brain:no-embed:end -->
+````
+
+The markers are HTML comments, so Obsidian hides them and renders the diagram exactly as
+written. Two things this buys you:
+
+- **A cleaner vector.** Box-drawing characters carry no meaning but still cost tokens, so
+  excluding them makes the note rank on what it actually says.
+- **The note embeds at all.** Those characters are roughly *one token each* — against ~4
+  characters per token for prose — so a note well under the ~300-line guideline can still
+  overflow the model's context and fail to embed. **The budget is tokens, not lines.** If
+  the pre-commit hook warns that a note is near the budget, fence the art first.
+
+Editing inside the block is free: the excluded region is invisible to the content hash
+too, so redrawing a diagram re-embeds nothing and never shows up as drift in `doctor.py`.
+
 **Query knowledge** — just search:
 
 ```bash

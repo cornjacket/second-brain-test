@@ -19,7 +19,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import backend_id, embed, is_deterministic  # noqa: E402
-from note_view import canonical_body, content_hash  # noqa: E402
+from note_view import (  # noqa: E402
+    EMBED_TOKEN_BUDGET, NO_EMBED_BEGIN, NO_EMBED_END,
+    canonical_body, content_hash, estimate_tokens, has_unpaired_no_embed,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = "vault"
@@ -93,9 +96,36 @@ def write_sidecar(note: str, force: bool = False) -> tuple[Path, bool]:
     return dest, True
 
 
+def warn_embed_input(note: str) -> None:
+    """Print (never raise) anything wrong with what ``note`` is about to embed as.
+
+    Both warnings describe the *canonical view*, not the file, because that is what the
+    model sees — and both are advisory: the commit proceeds either way, since a note the
+    hook refuses is a note the user cannot save.
+
+    - **Unpaired marker** — a ``no-embed`` block that never closes excludes nothing, so
+      the art the human fenced off is embedded anyway. Silent without this: the note
+      commits and searches fine, just polluted.
+    - **Over the token budget** — the note is close enough to the embedder's context that
+      the embed may fail outright. Said *here* rather than left to the backend's
+      ``input length exceeds the context length`` error, because this message can name
+      the fix.
+    """
+    text = (REPO_ROOT / note).read_text(encoding="utf-8")
+    if has_unpaired_no_embed(text):
+        print(f"  ⚠️  {note}: a no-embed marker has no partner — nothing was excluded. "
+              f"Pair {NO_EMBED_BEGIN} with {NO_EMBED_END}.")
+    tokens = estimate_tokens(canonical_body(text))
+    if tokens > EMBED_TOKEN_BUDGET:
+        print(f"  ⚠️  {note}: ~{tokens} tokens of embed input (budget {EMBED_TOKEN_BUDGET}) — "
+              f"the embed may fail. Fence decorative regions (diagrams, ASCII art, wide "
+              f"tables) in a no-embed block, or split the note.")
+
+
 def main() -> int:
     # Vault sidecars are derived + git-ignored: refresh them locally, never commit.
     for note in staged_notes():
+        warn_embed_input(note)
         dest, wrote = write_sidecar(note)
         if wrote:
             print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} (derived, not committed)")

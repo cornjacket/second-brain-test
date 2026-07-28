@@ -11,6 +11,18 @@ search and a skimming human get the gist fast.
 Link related notes with `[[wikilinks]]`, e.g. [[embeddings]]. If a note grows past
 ~300 lines, split it into smaller ones.
 
+Diagrams and ASCII art are worth keeping but carry no meaning for search, and their
+box-drawing characters are token-dense enough to overflow the embedder. Fence them so
+they stay in the note without entering its vector — Obsidian hides the markers:
+
+<!-- second-brain:no-embed:begin -->
+```
+ ┌─────────┐   ┌─────────┐
+ │ collect │──▶│ distill │
+ └─────────┘   └─────────┘
+```
+<!-- second-brain:no-embed:end -->
+
 <!--
 Before you write: does this deserve to be a note?
 -------------------------------------------------

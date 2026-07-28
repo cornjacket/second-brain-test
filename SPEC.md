@@ -78,6 +78,12 @@ so the scheme is written **PARA(G)**: Projects, Areas, Resources, Archive, plus 
 - **Frontmatter:** YAML block with at least `tags: [...]`; other keys are free.
 - **Links:** Obsidian-style `[[wikilinks]]` between notes are allowed and
   preserved verbatim (link-graph extraction is a roadmap item, §10).
+- **No-embed block:** a region between `<!-- second-brain:no-embed:begin -->` and
+  `<!-- second-brain:no-embed:end -->` is decorative, not substance. It is stored in
+  the file verbatim and rendered for the human (Obsidian hides HTML comments), but is
+  cut from the canonical view — so it is excluded from **both** the embedding and the
+  content hash. A note may hold any number of such blocks; a marker with no partner
+  delimits nothing, so nothing is excluded and the pre-commit hook warns.
 
 ```markdown
 ---
@@ -153,6 +159,22 @@ CREATE VIRTUAL TABLE notes USING vec0(
 by the same backend/model. Mismatched models produce incomparable vectors and
 corrupt search. The shared `scripts/embedder.py` is the single source for both.
 
+**Embed input = the canonical view, not the file.** `scripts/note_view.py` defines the
+one projection every consumer uses — the embedding, the content hash, and the lexical
+FTS body. It drops frontmatter (metadata is not substance), rewrites `[[wikilinks]]` to
+their surface text (markup is not substance), removes every no-embed block (§Note format:
+decoration is not substance), and pins line endings and edge whitespace so the view is
+identical on any machine. Hashing that same view is what lets the pipeline tell a real
+edit from a cosmetic one and skip the re-embed (§5.1, §3.1).
+
+**Context budget.** The embedder has a finite context (`nomic-embed-text`: 2048 tokens);
+input beyond it fails to embed rather than truncating silently. The budget is **tokens,
+not lines** — box-drawing and table characters cost roughly a token each against ~4
+characters per token for prose, so a note far inside the ~300-line guideline can still
+overflow. The remedy is to **exclude** decorative regions (no-embed block), not to raise
+the model's context: art that fits still degrades the vector. `embed_staged` warns when a
+note's canonical view approaches the budget.
+
 ## 5. Pipeline stage contracts
 
 ### 5.1 Pre-commit hook (embed)
@@ -163,8 +185,11 @@ corrupt search. The shared `scripts/embedder.py` is the single source for both.
   embedding and refreshes the note's **derived** sidecar locally. It does **not**
   `git add` the sidecar — live-vault vectors are git-ignored (§3.1), so committing
   a note keeps its vector fresh for `hydrate` without tracking it.
-- Implemented by `scripts/embed_staged.py`. The hook also runs the non-blocking
-  line-count guard (`scripts/check_line_count.py`).
+- Implemented by `scripts/embed_staged.py`. Before embedding each note it prints
+  **advisory** warnings (never blocking — a hook that refuses a note is a note the user
+  cannot save) for an unpaired no-embed marker, which excludes nothing, and for a
+  canonical view near the context budget (§4).
+- The hook also runs the non-blocking line-count guard (`scripts/check_line_count.py`).
 
 ### 5.2 Hydrate (`scripts/hydrate_cache.py`)
 

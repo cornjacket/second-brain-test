@@ -62,6 +62,40 @@ def check_link_invariance() -> int:
     return failures
 
 
+def check_no_embed_invariance() -> int:
+    """A no-embed block must not reach the embed input (returns the failure count).
+
+    The block exists so decorative content — an ASCII roadmap, a box-drawn diagram — can
+    live in a note without entering its vector. Two halves, and the second is the one that
+    quietly rots: the region must be **excluded**, and because the same view is what the
+    content hash fingerprints, *editing the art must change nothing at all* — no re-embed,
+    and no note flagged stale by doctor. Cheap to assert, so every brain checks it.
+    """
+    from note_view import NO_EMBED_BEGIN, NO_EMBED_END, canonical_body, content_hash
+
+    prose = "# N\n\nAn ablation of the corpus.\n"
+
+    def with_art(art: str) -> str:
+        return f"{prose}\n{NO_EMBED_BEGIN}\n```\n{art}\n```\n{NO_EMBED_END}\n"
+
+    failures = 0
+    if canonical_body(with_art("┌──┐\n└──┘")) != canonical_body(prose):
+        print("  DRIFT    no-embed: the fenced region reached the embed input — decorative "
+              "art would dilute the vector (and can overflow the model's context)")
+        failures += 1
+    if content_hash(with_art("┌──┐")) != content_hash(with_art("┌────────┐")):
+        print("  DRIFT    no-embed: editing the excluded art changed the content hash — "
+              "redrawing a diagram would re-embed the note and flag it stale")
+        failures += 1
+    if content_hash(with_art("┌──┐") + "More prose.\n") == content_hash(with_art("┌──┐")):
+        print("  DRIFT    no-embed: a REAL prose edit did not change the hash — the "
+              "no-op gate would skip an embed it must perform")
+        failures += 1
+    if not failures:
+        print("  ok       no-embed: art stays out of the vector; editing it costs nothing")
+    return failures
+
+
 def main() -> int:
     notes = sorted(FIXTURES.rglob("*.md"))
     if not notes:
@@ -69,7 +103,7 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
-    failures = check_link_invariance()
+    failures = check_link_invariance() + check_no_embed_invariance()
     for note in notes:
         rel = note.relative_to(REPO_ROOT).as_posix()
         exp = expected_sidecar(note)
