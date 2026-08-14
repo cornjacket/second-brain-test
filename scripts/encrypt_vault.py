@@ -160,9 +160,19 @@ def verify_tag(keys: Keys) -> str:
     return hmac.new(keys.verify, _VERIFY_MESSAGE, hashlib.sha256).hexdigest()
 
 
-def new_keyfile(passphrase: str, *, hint: str | None = None, n: int = SCRYPT_N,
-                r: int = SCRYPT_R, p: int = SCRYPT_P) -> dict:
+def new_keyfile(passphrase: str, *, hint: str | None = None, name: str | None = None,
+                n: int = SCRYPT_N, r: int = SCRYPT_R, p: int = SCRYPT_P) -> dict:
     """Build the committed keyfile for a fresh brain. Contains no secret.
+
+    ``id`` is random and ``name`` is human-readable, and both are committed on purpose: the
+    two of them are how a machine finds this brain's passphrase file. Deriving that from the
+    *local folder* instead would break twice over — two brains whose folders share a name
+    would share one key file, and one brain cloned to two paths would look for two.
+
+    Neither is a leak worth avoiding. Anyone who can read this repository can already read
+    its name, and the id is random with no relation to any content. (What must NOT go in
+    here is anything derived from the local directory, which can differ from the brain's
+    name and be sensitive in its own right — hence ``name`` is passed in, not detected.)
 
     The ``hint`` is optional free text and is **readable by anyone who can read the
     repo** — a hint good enough to remind you may be good enough to narrow a guess, and
@@ -172,11 +182,14 @@ def new_keyfile(passphrase: str, *, hint: str | None = None, n: int = SCRYPT_N,
     keys = derive_keys(passphrase, salt, n=n, r=r, p=p)
     kf = {
         "v": FORMAT_VERSION,
+        "id": secrets.token_hex(4),
         "kdf": "scrypt",
         "n": n, "r": r, "p": p,
         "salt": base64.b64encode(salt).decode("ascii"),
         "verify": verify_tag(keys),
     }
+    if name:
+        kf["name"] = name
     if hint:
         kf["hint"] = hint
     return kf
@@ -483,7 +496,7 @@ def warn_about_history(root: Path) -> None:
 
 
 def enable(root: Path, passphrase: str, *, hint: str | None = None,
-           commit: bool = True) -> list[str]:
+           name: str | None = None, commit: bool = True) -> list[str]:
     """Migrate a plaintext brain to encrypted. Returns the notes encrypted."""
     if (root / "enc" / "keyfile.json").exists():
         raise EncryptionError("this brain is already encrypted (enc/keyfile.json exists)")
@@ -492,7 +505,8 @@ def enable(root: Path, passphrase: str, *, hint: str | None = None,
         raise EncryptionError("cannot enable encryption:\n  - " + "\n  - ".join(problems))
     warn_about_history(root)
 
-    save_keyfile(new_keyfile(passphrase, hint=hint), root / "enc" / "keyfile.json")
+    save_keyfile(new_keyfile(passphrase, hint=hint, name=name or root.resolve().name),
+                 root / "enc" / "keyfile.json")
     keys = keys_from_keyfile(load_keyfile(root / "enc" / "keyfile.json"), passphrase)
 
     notes = content_notes(root)
@@ -622,6 +636,9 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--name-of", metavar="PATH", help="print the committed blob name for a note")
     g.add_argument("--path-of", metavar="NAME", help="print the note path behind a blob name")
     g.add_argument("--set-hint", metavar="TEXT", help="set the passphrase hint in the keyfile")
+    ap.add_argument("--name", metavar="TEXT", default=None,
+                    help="with --enable: this brain's name, committed and used to name its "
+                         "key file on every machine (default: this folder's name)")
     ap.add_argument("--hint", metavar="TEXT", default=None,
                     help="with --enable: an optional passphrase reminder, readable by anyone "
                          "who can read the repo")
@@ -653,7 +670,7 @@ def main(argv: list[str] | None = None) -> int:
                 if removed:
                     print(f"  encrypt: dropped {len(removed)} orphaned blob(s)")
         elif args.enable:
-            notes = enable(root, passphrase, hint=args.hint)
+            notes = enable(root, passphrase, hint=args.hint, name=args.name)
             print(f"encrypted {len(notes)} note(s) -> enc/ ; the vault is now git-ignored")
         elif args.decrypt:
             notes = decrypt_all(root, passphrase)

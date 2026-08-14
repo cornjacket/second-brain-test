@@ -271,13 +271,27 @@ One-time — install the optional cipher, then migrate:
 ```bash
 pip install -r requirements-crypt.txt
 
-# Put your passphrase somewhere OUTSIDE this repo, readable only by you.
-mkdir -p ~/.config/second-brain && chmod 700 ~/.config/second-brain
-printf 'your passphrase here' > ~/.config/second-brain/$(basename $PWD).key
-chmod 600 ~/.config/second-brain/$(basename $PWD).key
-
 python3 scripts/encrypt_vault.py --enable --hint "the usual one, plus the year"
+
+# Then store the passphrase where this brain will look for it. The path is printed
+# by the command below, and is derived from the brain's own committed id — so it is
+# the same on every machine you clone to, whatever the folder is called there.
+python3 scripts/doctor.py            # names the expected key file if it is missing
 ```
+
+Put the passphrase **outside the repository**, readable only by you:
+
+```bash
+mkdir -p ~/.config/second-brain/keys && chmod 700 ~/.config/second-brain/keys
+printf 'your passphrase here' > ~/.config/second-brain/keys/<name>-<id>.key
+chmod 600 ~/.config/second-brain/keys/<name>-<id>.key
+```
+
+Outside is the point: a secret inside the working tree is one `git add -f` away from the
+remote. `<name>` and `<id>` come from `enc/keyfile.json` — the id is what lookup matches,
+the name is there so the directory is readable when you have several brains. Prefer a
+different location? `git config secondbrain.passphrasefile <path>` (per machine, never
+committed), or `SECOND_BRAIN_PASSPHRASE=…` for a single command.
 
 That commits once: every note becomes an opaque blob under `enc/`, and `vault/` becomes
 git-ignored. Nothing in your working tree moves.

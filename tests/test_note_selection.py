@@ -16,6 +16,7 @@ it is now produced by different code.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -194,6 +195,82 @@ class PassphraseTest(unittest.TestCase):
         """A secret inside the working tree is one `git add -f` from the remote."""
         import passphrase as pp
         self.assertFalse(pp.is_inside_repo(pp.default_path(self.brain), self.brain))
+
+
+class BrainIdentityTest(unittest.TestCase):
+    """A brain's key file is found by what the BRAIN says it is, not where it sits.
+
+    Deriving the key filename from the local folder breaks in both directions, and both
+    failures are silent-ish: two brains whose folders share a name quietly share one key
+    file, and one brain cloned to two paths looks for two different files — reporting
+    "wrong passphrase" when the real answer is "wrong filename".
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def brain(self, folder: str, *, brain_id: str | None = None,
+              name: str | None = None) -> Path:
+        path = self.root / folder
+        (path / "enc").mkdir(parents=True)
+        if brain_id or name:
+            payload = {"v": 1, "kdf": "scrypt"}
+            if brain_id:
+                payload["id"] = brain_id
+            if name:
+                payload["name"] = name
+            (path / "enc" / "keyfile.json").write_text(json.dumps(payload), encoding="utf-8")
+        return path
+
+    def test_identity_comes_from_the_keyfile_not_the_folder(self):
+        import passphrase as pp
+        b = self.brain("some-local-folder", brain_id="4f2a91c8", name="my-brain")
+        self.assertEqual(pp.brain_identity(b), ("4f2a91c8", "my-brain"))
+        self.assertIn("my-brain-4f2a91c8.key", str(pp.default_path(b)))
+
+    def test_the_same_brain_at_two_paths_wants_ONE_key_file(self):
+        """Clone it anywhere; the key file's name does not move."""
+        import passphrase as pp
+        a = self.brain("laptop-copy", brain_id="4f2a91c8", name="my-brain")
+        b = self.brain("desktop-copy", brain_id="4f2a91c8", name="my-brain")
+        self.assertEqual(pp.default_path(a), pp.default_path(b))
+
+    def test_two_brains_sharing_a_folder_name_do_NOT_share_a_key_file(self):
+        import passphrase as pp
+        (self.root / "one").mkdir()
+        (self.root / "two").mkdir()
+        a = self.brain("one/second-brain", brain_id="aaaaaaaa", name="second-brain")
+        b = self.brain("two/second-brain", brain_id="bbbbbbbb", name="second-brain")
+        self.assertNotEqual(pp.default_path(a), pp.default_path(b))
+
+    def test_a_keyfile_without_an_id_keeps_the_old_folder_derived_path(self):
+        """A brain encrypted before ids existed must not be told its key has vanished."""
+        import passphrase as pp
+        b = self.brain("legacy-brain")
+        self.assertEqual(pp.brain_identity(b), (None, "legacy-brain"))
+        self.assertTrue(str(pp.default_path(b)).endswith("second-brain/legacy-brain.key"))
+
+    def test_lookup_matches_the_id_so_a_renamed_brain_still_resolves(self):
+        import passphrase as pp
+        b = self.brain("brain", brain_id="4f2a91c8", name="renamed-since")
+        keys_dir = self.root / "keys"
+        keys_dir.mkdir()
+        stale = keys_dir / "whatever-it-was-called-4f2a91c8.key"
+        stale.write_text("secret", encoding="utf-8")
+        real_dir = pp.KEYS_DIR
+        pp.KEYS_DIR = keys_dir
+        self.addCleanup(setattr, pp, "KEYS_DIR", real_dir)
+        self.assertEqual(pp.find_key_file(b), stale)
+
+    def test_the_id_and_name_carry_no_secret(self):
+        import encrypt_vault as ev
+        kf = ev.new_keyfile(PASSPHRASE, name="my-brain", **CHEAP)
+        blob = json.dumps(kf)
+        for secret in PASSPHRASE.split():
+            self.assertNotIn(secret, blob)
+        self.assertEqual(len(kf["id"]), 8)
 
 
 if __name__ == "__main__":
