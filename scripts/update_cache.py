@@ -137,6 +137,17 @@ def changed_in_commit(ref: str) -> tuple[list[str], list[str]]:
         elif status[:1] == "D" and len(parts) >= 2:
             if is_para_note(parts[1]):
                 to_delete.append(parts[1])
+    # A commit that stops TRACKING a note has not deleted it. The two look identical to
+    # `diff-tree` — both are `D` — and treating them the same is destructive here, because
+    # `delete()` unlinks the sidecar: the vector is gone and the note must be re-embedded.
+    #
+    # This is not hypothetical. Enabling encryption untracks the whole vault in one commit
+    # (`git rm --cached`), which reads as "every note deleted" and wiped every sidecar in
+    # the brain — found by running the migration end-to-end, not by a test.
+    #
+    # The working tree is the authority on whether a note exists, in either mode. Checking
+    # it also fixes the plaintext case where someone untracks a note by hand and keeps it.
+    to_delete = [n for n in to_delete if not (REPO_ROOT / n).exists()]
     return to_upsert, to_delete
 
 

@@ -287,5 +287,58 @@ class MigrationTest(unittest.TestCase):
                       (self.brain / "config" / "features.toml").read_text(encoding="utf-8"))
 
 
+class UntrackIsNotDeleteTest(unittest.TestCase):
+    """Untracking a note is not deleting it — and confusing the two destroys vectors.
+
+    `git diff-tree` reports both as `D`. The cache updater acted on that `D` by unlinking
+    the note's sidecar, so the single commit that enables encryption — which untracks the
+    whole vault at once — **wiped every embedding in the brain**, forcing a full re-embed
+    and leaving search degraded until someone ran `doctor --repair`.
+
+    Found by running the migration end-to-end on a generated brain, not by a test: nothing
+    failed, nothing printed, the commit succeeded, and the vectors were simply gone.
+
+    Both halves are asserted. Without the second, the first would pass for a cache updater
+    that had simply stopped deleting anything at all.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.brain = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        (self.brain / "vault" / "projects").mkdir(parents=True)
+        self.note = "vault/projects/a-note.md"
+        (self.brain / self.note).write_text("---\ntags: [t]\n---\n\n# A\n\nBody.\n",
+                                            encoding="utf-8")
+        _git(self.brain, "init", "-q")
+        _git(self.brain, "config", "user.email", "u@example.invalid")
+        _git(self.brain, "config", "user.name", "U")
+        _git(self.brain, "add", "-A")
+        _git(self.brain, "commit", "-q", "-m", "seed")
+
+        import update_cache as uc
+        self.uc = uc
+        self._real_root = uc.REPO_ROOT
+        uc.REPO_ROOT = self.brain
+        self.addCleanup(setattr, uc, "REPO_ROOT", self._real_root)
+
+    def test_untracking_a_note_that_still_exists_is_not_a_deletion(self):
+        _git(self.brain, "rm", "--cached", "-q", "--", self.note)
+        _git(self.brain, "commit", "-q", "-m", "untrack the vault")
+        _, to_delete = self.uc.changed_in_commit("HEAD")
+        self.assertEqual(to_delete, [],
+                         "untracking a note read as deleting it — the cache updater would "
+                         "unlink its sidecar and throw away the embedding")
+
+    def test_actually_deleting_a_note_still_is_a_deletion(self):
+        (self.brain / self.note).unlink()
+        _git(self.brain, "add", "-A")
+        _git(self.brain, "commit", "-q", "-m", "delete the note")
+        _, to_delete = self.uc.changed_in_commit("HEAD")
+        self.assertEqual(to_delete, [self.note],
+                         "a genuinely deleted note was not reported — the fix for the case "
+                         "above must not stop real deletions from being cleaned up")
+
+
 if __name__ == "__main__":
     unittest.main()

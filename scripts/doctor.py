@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -130,6 +131,102 @@ def check_pdf_sources(rep: Report) -> None:
                      f"protected by default; grant access or use the brain's vault/inbox.")
         else:
             rep.ok(f"PDF source folder readable: {f}")
+
+
+def check_encryption(rep: Report) -> None:
+    """Is this brain's encryption actually in the state it claims to be in? (task #42)
+
+    Silent when the toggle is off — which is every brain that never turned it on.
+
+    The checks are ordered so the first failure is the *cause*: a brain whose passphrase
+    cannot be found has nothing useful to say about its blobs. And they are deliberately
+    **positive** — "exactly these paths are tracked", not "no bad path was noticed" —
+    because the failure being guarded against is a plaintext note quietly reaching the
+    remote, which looks like nothing at all until someone reads the repo.
+    """
+    try:
+        from features import encryption
+    except Exception:
+        return
+    if not encryption():
+        return
+
+    try:
+        import encrypt_vault as ev
+        import passphrase as pp
+    except ImportError as exc:
+        rep.fail(f"encryption is on but its modules are unavailable: {exc}")
+        return
+
+    # 1. Half-finished migration. The toggle is a *claim*; enc/ is the fact.
+    keyfile_path = REPO_ROOT / "enc" / "keyfile.json"
+    if not keyfile_path.exists():
+        rep.fail("encryption is on but there is no enc/keyfile.json — the migration did not "
+                 "finish. Run `python3 scripts/encrypt_vault.py --enable`, or set "
+                 "encryption = false in config/features.toml.")
+        return
+
+    # 2. The passphrase, and whether it is the RIGHT one. Without the verifier a typo
+    #    surfaces later as N unreadable notes instead of one clear answer here.
+    try:
+        secret = pp.resolve(REPO_ROOT)
+    except Exception as exc:
+        rep.fail(f"encryption is on but no passphrase is available: {exc}")
+        return
+    try:
+        keys = ev.keys_from_keyfile(ev.load_keyfile(keyfile_path), secret)
+        rep.ok("passphrase resolves and matches this brain's keyfile")
+    except ev.WrongPassphrase:
+        rep.fail("the passphrase found does not match this brain — nothing here can be "
+                 "decrypted with it. Check SECOND_BRAIN_PASSPHRASE or your key file"
+                 + (f" (hint: {ev.load_keyfile(keyfile_path)['hint']})"
+                    if ev.load_keyfile(keyfile_path).get("hint") else "") + ".")
+        return
+    except Exception as exc:
+        rep.fail(f"cannot open this brain's keyfile: {exc}")
+        return
+
+    # 3. The secret must not live where git could reach it.
+    configured = pp.configured_path(REPO_ROOT) or pp.default_path(REPO_ROOT)
+    if pp.is_inside_repo(configured, REPO_ROOT):
+        rep.fail(f"the passphrase file is INSIDE the brain ({configured}) — one `git add -f` "
+                 f"or one .gitignore edit away from the remote. Move it outside and point "
+                 f"`git config secondbrain.passphrasefile` at it.")
+    else:
+        rep.ok("passphrase file is outside the repository")
+
+    # 4. Every note encrypted, and no blob left behind by a delete or a rename.
+    notes = ev.content_notes(REPO_ROOT)
+    stale = [rel for rel in notes if ev.needs_encrypting(keys, rel, REPO_ROOT)]
+    if stale:
+        rep.fail(f"{len(stale)} note(s) are not encrypted or differ from their committed blob "
+                 f"— run `python3 scripts/encrypt_vault.py --sync`")
+        for rel in stale[:5]:
+            rep.info(rel)
+    else:
+        rep.ok(f"all {len(notes)} note(s) match their committed blob")
+
+    existing = [p.name for p in (REPO_ROOT / "enc").glob(f"*{ev.SUFFIX}")]
+    orphans = ev.orphan_blobs(keys, notes, existing)
+    if orphans:
+        rep.fail(f"{len(orphans)} orphaned blob(s) with no note behind them (a delete or a "
+                 f"rename) — run `python3 scripts/encrypt_vault.py --sync`")
+    else:
+        rep.ok("no orphaned blobs")
+
+    # 5. The one that matters: what is git actually tracking under vault/?
+    try:
+        tracked = subprocess.run(["git", "ls-files", "vault"], cwd=REPO_ROOT,
+                                 capture_output=True, text=True, timeout=30).stdout.split()
+    except (OSError, subprocess.SubprocessError) as exc:
+        rep.info(f"could not ask git what is tracked under vault/: {exc}")
+        return
+    leaked = [p for p in tracked if p not in ev.MACHINERY]
+    if leaked:
+        rep.fail(f"{len(leaked)} PLAINTEXT note(s) are tracked under vault/ despite encryption "
+                 f"being on — these are committed in the clear: {leaked[:5]}")
+    else:
+        rep.ok("nothing under vault/ is tracked except the note template")
 
 
 def check_ollama(rep: Report) -> None:
@@ -471,6 +568,7 @@ def main(argv: list[str]) -> int:
     if backend == "ollama":
         check_ollama(rep)
     check_pdf_sources(rep)
+    check_encryption(rep)
 
     if args.repair:
         print("repair:")

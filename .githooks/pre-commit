@@ -7,6 +7,8 @@
 #     the same commit (scripts/embed_staged.py).
 #  3. Warn — never block — when a staged Markdown note exceeds 300 non-empty lines
 #     (scripts/check_line_count.py, Task 0002). Excludes README.md and tasks/.
+#  4. If encryption is enabled, encrypt the notes that changed and stage their blobs
+#     (scripts/encrypt_vault.py --precommit). Silent no-op when the toggle is off.
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
@@ -21,3 +23,9 @@ if [ -n "$notes" ]; then
   # shellcheck disable=SC2086  # intentional word-split; note paths have no spaces
   python3 "$ROOT/scripts/check_line_count.py" $notes || true
 fi
+
+# 4. If encryption is on, re-encrypt the notes that changed and stage their blobs. LAST,
+#    because step 1 may have edited a note and the blob has to carry the text actually
+#    being committed. A silent no-op — not even a passphrase lookup — when the toggle is
+#    off, which is every brain that never turned it on.
+python3 "$ROOT/scripts/encrypt_vault.py" --precommit

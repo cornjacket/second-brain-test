@@ -15,9 +15,21 @@
 #                      Off by default: opt in if you want commits to auto-link terms.
 #                      (Adding a term with glossary_new.py links it regardless.)
 #                      Env: SECOND_BRAIN_GLOSSARY_AUTOLINK=0|1
+#   encryption       — commit encrypted blobs instead of notes, so a git remote holds
+#                      nothing readable — bodies AND filenames. The working tree stays
+#                      plaintext .md; only what git sees changes. Off by default.
+#                      Do NOT flip this by hand: turning it on is a migration
+#                      (`python3 scripts/encrypt_vault.py --enable`, which sets this key
+#                      itself), and true here on a brain whose notes are still plaintext
+#                      describes a state that does not exist. It is also a SHARED fact,
+#                      not a local preference — every clone must agree, or a peer with it
+#                      off commits plaintext into the same remote.
+#                      Needs `pip install -r requirements-crypt.txt`. See the README.
+#                      Env: SECOND_BRAIN_ENCRYPTION=0|1
 hybrid_search = true
 rrf_k = 60
 glossary_autolink = false
+encryption = false
 
 # PDF ingestion (scripts/add_pdf.py, scripts/pdf_config.py). Read only when you add a
 # PDF; a brain that never ingests one ignores this block. See the README "Add a PDF".

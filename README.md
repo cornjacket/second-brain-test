@@ -258,6 +258,66 @@ returns document, page, and a snippet), and `get_pdf_passage` (read one in full)
 search (`search_second_brain`) and PDF-passage search are separate tools, so ask for
 whichever you want — or both.
 
+## Encrypt your notes (optional)
+
+If you back this brain up to a git remote, every note is pushed **in the clear** to a
+server you do not own. Turn encryption on and what gets committed becomes unreadable —
+**bodies and filenames both** — while your working tree stays exactly as it is: plain
+`.md` files that Obsidian opens, search searches, and the embedder embeds. Only what git
+sees changes.
+
+One-time — install the optional cipher, then migrate:
+
+```bash
+pip install -r requirements-crypt.txt
+
+# Put your passphrase somewhere OUTSIDE this repo, readable only by you.
+mkdir -p ~/.config/second-brain && chmod 700 ~/.config/second-brain
+printf 'your passphrase here' > ~/.config/second-brain/$(basename $PWD).key
+chmod 600 ~/.config/second-brain/$(basename $PWD).key
+
+python3 scripts/encrypt_vault.py --enable --hint "the usual one, plus the year"
+```
+
+That commits once: every note becomes an opaque blob under `enc/`, and `vault/` becomes
+git-ignored. Nothing in your working tree moves.
+
+> ### ⚠️ This does not reach backwards
+>
+> Encryption changes what **future** commits contain. Every note you have already
+> committed — and, if you have a remote, already pushed — stays in that history,
+> readable, until the history itself is rewritten or the repository is deleted.
+> **A brain that has ever committed plaintext cannot be made retroactively private by
+> turning this on.** If that matters, start a fresh repository and encrypt it before the
+> first note goes in.
+
+**On another machine**, clone as usual and then rebuild your notes from the blobs:
+
+```bash
+python3 scripts/encrypt_vault.py --decrypt
+```
+
+Day to day there is nothing to do — committing a note encrypts it. The other commands:
+
+```bash
+python3 scripts/encrypt_vault.py --sync                  # re-encrypt edits, drop deleted blobs
+python3 scripts/encrypt_vault.py --name-of vault/projects/foo.md   # which blob is this note?
+python3 scripts/encrypt_vault.py --path-of ABC123.md.enc           # which note is this blob?
+python3 scripts/encrypt_vault.py --set-hint "new reminder"
+python3 scripts/encrypt_vault.py --disable               # go back to plaintext notes
+```
+
+`python3 scripts/doctor.py` checks the whole arrangement: that your passphrase is found
+*and correct*, that every note matches its blob, that no blob is orphaned, and that
+nothing under `vault/` is tracked in the clear.
+
+**What is still visible** to anyone who can read the repository: how many notes you have,
+how big each one is, when you committed, and the passphrase hint if you set one. Not the
+names, not the folders, not a word of the contents.
+
+**Keep the passphrase somewhere you will not lose it.** Filenames are encrypted too, so
+without it you cannot even tell what a lost note *was*. There is no recovery.
+
 ## Query it from any project (AI skill)
 
 The point of a second brain is for an **AI to consult it while you build something

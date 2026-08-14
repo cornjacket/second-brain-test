@@ -494,8 +494,16 @@ def enable(root: Path, passphrase: str, *, hint: str | None = None,
     # alone, so Obsidian, search and the embedder carry on exactly as before. This is the
     # step that makes the ignore rules bite; without it the notes stay tracked and ignored
     # files that are already tracked keep being committed.
-    for rel in notes:
-        _git(root, "rm", "--cached", "-q", "--", rel, check=False)
+    #
+    # Driven by what git ACTUALLY tracks, not by the note list. The two differ, and the
+    # difference leaks: the `.gitkeep` placeholders are tracked, are not notes, and exist
+    # only in the buckets that happen to be empty — so leaving them behind advertises
+    # exactly which PARA roots you write into. Anything tracked under vault/ that is not
+    # the devkit-owned template is untracked here, whatever it turns out to be.
+    tracked = _git(root, "ls-files", "vault", check=False).stdout.split()
+    for rel in tracked:
+        if rel not in MACHINERY:
+            _git(root, "rm", "--cached", "-q", "--", rel, check=False)
     _git(root, "add", "--", "enc", ".gitignore", "config/features.toml")
     if commit:
         _git(root, "commit", "-q", "-m",
@@ -569,6 +577,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="go back to committing plaintext notes")
     g.add_argument("--sync", action="store_true",
                    help="re-encrypt changed notes and drop orphaned blobs")
+    g.add_argument("--precommit", action="store_true",
+                   help="hook mode: sync and stage enc/ (silent no-op when encryption is off)")
     g.add_argument("--name-of", metavar="PATH", help="print the committed blob name for a note")
     g.add_argument("--path-of", metavar="NAME", help="print the note path behind a blob name")
     g.add_argument("--set-hint", metavar="TEXT", help="set the passphrase hint in the keyfile")
@@ -578,9 +588,27 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     root = REPO_ROOT
 
+    if args.precommit:
+        # The hook calls this on every commit, so it must cost nothing in the brains that
+        # will never turn encryption on — check the toggle BEFORE resolving a passphrase.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from features import encryption
+        if not encryption():
+            return 0
+
     try:
         passphrase = _resolve_passphrase(root)
-        if args.enable:
+        if args.precommit:
+            # Encrypt AFTER the other hook steps: glossary auto-linking may have edited the
+            # note, and the blob must carry the text that is actually being committed.
+            encrypted, removed = sync(root, passphrase)
+            if encrypted or removed:
+                _git(root, "add", "-A", "--", "enc")
+                for rel in encrypted:
+                    print(f"  encrypt: {rel}")
+                if removed:
+                    print(f"  encrypt: dropped {len(removed)} orphaned blob(s)")
+        elif args.enable:
             notes = enable(root, passphrase, hint=args.hint)
             print(f"encrypted {len(notes)} note(s) -> enc/ ; the vault is now git-ignored")
         elif args.decrypt:
