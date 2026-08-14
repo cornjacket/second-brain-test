@@ -399,6 +399,33 @@ def _slugify(title: str) -> str:
     return slug
 
 
+def _encryption_on() -> bool:
+    """Is this brain committing encrypted blobs instead of notes?
+
+    Imported lazily and defensively: an older brain has no features module at all, and an
+    unreadable config must not take the whole server down at import time.
+    """
+    try:
+        from features import encryption
+        return encryption()
+    except Exception:
+        return False
+
+
+def _encrypt_for_commit(rel: str) -> tuple[str, bool]:
+    """Write the blob for a note and return ``(brain-relative blob path, wrote)``.
+
+    The passphrase comes from a file, never a prompt — this runs inside the MCP server,
+    where anything that waits for input hangs the session with no way to answer.
+    """
+    from encrypt_vault import encrypt_file, keys_from_keyfile, load_keyfile
+    from passphrase import resolve
+
+    keys = keys_from_keyfile(load_keyfile(BRAIN / "enc" / "keyfile.json"), resolve(BRAIN))
+    dest, wrote = encrypt_file(keys, rel, BRAIN)
+    return dest.relative_to(BRAIN).as_posix(), wrote
+
+
 def _why(proc: subprocess.CompletedProcess) -> str:
     """git's complaint as one readable line — its stderr is multi-line, and splicing that
     verbatim into a report renders as garbage in a chat client."""
@@ -489,13 +516,27 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     path.write_text("\n".join([*front, f"# {title}", "", body.strip(), ""]), encoding="utf-8")
 
     rel = str(path.relative_to(BRAIN))
+    # What git is allowed to see. With encryption on the note itself is git-ignored, so
+    # `git add -- <note>.md` does not quietly do nothing — it FAILS on an ignored
+    # pathspec, and this whole write path dies mid-commit. The blob is the committable
+    # artifact in that mode, so it is what gets staged, and the commit message carries the
+    # opaque name rather than the title (a log that prints the title would undo the point
+    # of encrypting the filename).
+    commit_paths, subject = [rel], f"note: add {title}"
+    if _encryption_on():
+        try:
+            blob, _ = _encrypt_for_commit(rel)
+        except Exception as exc:
+            path.unlink(missing_ok=True)  # leave no half-written note behind
+            raise ValueError(f"could not encrypt the new note, so it was not created: {exc}") from exc
+        commit_paths, subject = [blob], f"note: add {Path(blob).name}"
     try:
         # Stage ONLY this file, and commit ONLY this pathspec. A bare `git commit -a` (or
         # staging the whole tree) would sweep the user's in-progress edits into a commit an
         # agent authored — their work, our commit message, no consent. The pathspec keeps
         # anything else they have staged exactly where it was: still staged, uncommitted.
-        _git("add", "--", rel)
-        _git("commit", "-m", f"note: add {title}", "--", rel)
+        _git("add", "--", *commit_paths)
+        _git("commit", "-m", subject, "--", *commit_paths)
         # Re-sync the REAL index to what we just committed. A pathspec commit is a *partial*
         # commit, and git hands hooks a **temporary** index for those — so anything a hook
         # re-stages (with glossary_autolink on, the pre-commit hook links terms in the note and
@@ -504,7 +545,7 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
         # the next commit by anyone — human or agent — silently applies it and un-links the term.
         # The pathspec stays (it is what stops us sweeping up the user's staged work); this is the
         # step it was missing. A no-op when no hook touched the file.
-        _git("add", "--", rel, check=False)
+        _git("add", "--", *commit_paths, check=False)
     except subprocess.CalledProcessError as exc:
         path.unlink(missing_ok=True)  # leave no half-written note behind
         raise ValueError(f"git commit failed, note not created: {_why(exc)}") from exc

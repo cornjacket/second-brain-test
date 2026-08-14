@@ -19,6 +19,15 @@ searches (hybrid on, K=60).
   links known glossary terms in each staged note before embedding it. Off by
   default (a hook that edits your prose should be opt-in). Env:
   ``SECOND_BRAIN_GLOSSARY_AUTOLINK``.
+- ``encryption`` (bool, default ``False``): when set, the vault is git-ignored and
+  only encrypted blobs are committed, so a git remote holds nothing readable —
+  bodies and filenames both. Env: ``SECOND_BRAIN_ENCRYPTION``.
+
+  Unlike its neighbours this key is **not** a behaviour switch you can flip freely:
+  turning it on is a *migration* (``encrypt_vault.py --enable``), and setting it true
+  on a brain whose notes are still plaintext describes a state that does not exist.
+  It is a committed, shared fact rather than a local preference — every clone must
+  agree, because a peer with it off would commit plaintext into the same remote.
 """
 from __future__ import annotations
 
@@ -32,6 +41,7 @@ _CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "features.tom
 _DEFAULT_HYBRID = True
 _DEFAULT_RRF_K = 60
 _DEFAULT_GLOSSARY_AUTOLINK = False
+_DEFAULT_ENCRYPTION = False
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -100,3 +110,16 @@ def glossary_autolink() -> bool:
     if isinstance(val, bool):
         return val
     return _DEFAULT_GLOSSARY_AUTOLINK
+
+
+def encryption() -> bool:
+    """Whether this brain commits encrypted blobs instead of notes: env > config > default (False)."""
+    env = os.environ.get("SECOND_BRAIN_ENCRYPTION")
+    if env is not None:
+        parsed = _parse_bool(env)
+        if parsed is not None:
+            return parsed
+    val = _config().get("encryption")
+    if isinstance(val, bool):
+        return val
+    return _DEFAULT_ENCRYPTION

@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import backend_id, embed, is_deterministic  # noqa: E402
+from note_selection import notes_for_commit  # noqa: E402
 from note_view import (  # noqa: E402
     EMBED_TOKEN_BUDGET, NO_EMBED_BEGIN, NO_EMBED_END,
     canonical_body, content_hash, estimate_tokens, has_unpaired_no_embed,
@@ -27,22 +28,6 @@ from note_view import (  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = "vault"
 PARA_ROOTS = ("projects", "areas", "resources", "archive")
-
-
-def staged_notes() -> list[str]:
-    out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-    ).stdout
-    notes = []
-    for line in out.splitlines():
-        if not line.endswith(".md"):
-            continue
-        # Only embed notes under vault/<para-root>/… (e.g. vault/areas/foo.md).
-        parts = line.split("/")
-        if len(parts) >= 3 and parts[0] == VAULT_DIR and parts[1] in PARA_ROOTS:
-            notes.append(line)
-    return notes
 
 
 def sidecar_path(note: str) -> Path:
@@ -124,7 +109,10 @@ def warn_embed_input(note: str) -> None:
 
 def main() -> int:
     # Vault sidecars are derived + git-ignored: refresh them locally, never commit.
-    for note in staged_notes():
+    # The note list comes from note_selection, NOT from `git diff --cached`: with
+    # encryption on the vault is git-ignored, so asking git what is staged returns
+    # nothing and every note silently stops being embedded.
+    for note in notes_for_commit():
         warn_embed_input(note)
         dest, wrote = write_sidecar(note)
         if wrote:

@@ -303,6 +303,41 @@ def is_unchanged(keys: Keys, blob: bytes, body: bytes) -> bool:
     return hmac.compare_digest(plaintext_hash(keys, existing), plaintext_hash(keys, body))
 
 
+def blob_path(keys: Keys, rel: str | Path, root: Path = REPO_ROOT) -> Path:
+    """Where a note's committed blob lives."""
+    return root / "enc" / blob_name(keys, rel)
+
+
+def encrypt_file(keys: Keys, rel: str | Path, root: Path = REPO_ROOT) -> tuple[Path, bool]:
+    """Write a note's blob; return ``(path, wrote)``.
+
+    Skips when the existing blob already holds exactly these bytes, which is what keeps a
+    commit from re-diffing the entire vault: AES-GCM's random nonce means re-encrypting an
+    unchanged note would otherwise produce different ciphertext every time.
+    """
+    rel = canonical_rel(rel)
+    body = (root / rel).read_bytes()
+    dest = blob_path(keys, rel, root)
+    if dest.exists() and is_unchanged(keys, dest.read_bytes(), body):
+        return dest, False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(encrypt_note(keys, rel, body))
+    return dest, True
+
+
+def needs_encrypting(keys: Keys, rel: str | Path, root: Path = REPO_ROOT) -> bool:
+    """Does this note differ from the blob already committed for it?
+
+    With the vault git-ignored, git can no longer answer "what changed" — so this is the
+    change detector the commit path uses in its place. A note with no blob at all counts
+    as changed, which is what makes the first encrypted commit pick up the whole vault.
+    """
+    dest = blob_path(keys, rel, root)
+    if not dest.exists():
+        return True
+    return not is_unchanged(keys, dest.read_bytes(), (root / canonical_rel(rel)).read_bytes())
+
+
 def orphan_blobs(keys: Keys, rel_paths, existing_names) -> set[str]:
     """Blob names with no live note behind them — deletions and the old half of a rename.
 

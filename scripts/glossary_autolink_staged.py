@@ -22,27 +22,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from features import glossary_autolink  # noqa: E402
+from features import encryption, glossary_autolink  # noqa: E402
+from note_selection import notes_for_commit  # noqa: E402
 import glossary_scan  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = "vault"
 PARA_ROOTS = ("projects", "areas", "resources", "archive")
-
-
-def staged_para_notes() -> list[str]:
-    """Staged (added/copied/modified) Markdown notes under vault/<para-root>/…."""
-    out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-    ).stdout
-    notes = []
-    for line in out.splitlines():
-        parts = line.split("/")
-        if (line.endswith(".md") and len(parts) >= 3
-                and parts[0] == VAULT_DIR and parts[1] in PARA_ROOTS):
-            notes.append(line)
-    return notes
 
 
 def main() -> int:
@@ -51,12 +37,18 @@ def main() -> int:
     terms = glossary_scan.glossary_terms()
     if not terms:
         return 0
-    for note in staged_para_notes():
+    # From note_selection, NOT `git diff --cached`: an encrypted brain git-ignores the
+    # vault, so git stages no note and this loop would run zero times, silently.
+    for note in notes_for_commit():
         linked = glossary_scan.link_note_file(REPO_ROOT / note, terms)
         if not linked:
             continue
         # Re-stage so the inserted links land in THIS commit (and embed with the note).
-        subprocess.run(["git", "add", "--", note], cwd=REPO_ROOT, check=True)
+        # With encryption on the note itself is git-ignored — the blob carrying it is
+        # staged by the encrypt step instead, so re-staging here would fail on an
+        # ignored pathspec. The edit still reaches the commit, via the blob.
+        if not encryption():
+            subprocess.run(["git", "add", "--", note], cwd=REPO_ROOT, check=True)
         for surface, slug in linked:
             print(f"  glossary-link  {note}: '{surface}' -> [[{slug}]]")
     return 0

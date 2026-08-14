@@ -13,8 +13,11 @@ ROOT="$(git rev-parse --show-toplevel)"
 python3 "$ROOT/scripts/glossary_autolink_staged.py"
 python3 "$ROOT/scripts/embed_staged.py"
 
-staged_md="$(git diff --cached --name-only --diff-filter=ACM -- '*.md')"
-if [ -n "$staged_md" ]; then
+# The note list comes from note_selection.py, NOT from `git diff --cached -- '*.md'`.
+# An encrypted brain git-ignores the vault, so git stages no note and that query returns
+# an empty string — the guard below would then never fire again, without ever failing.
+notes="$(python3 "$ROOT/scripts/note_selection.py")"
+if [ -n "$notes" ]; then
   # shellcheck disable=SC2086  # intentional word-split; note paths have no spaces
-  python3 "$ROOT/scripts/check_line_count.py" $staged_md || true
+  python3 "$ROOT/scripts/check_line_count.py" $notes || true
 fi
