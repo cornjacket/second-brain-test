@@ -1,0 +1,13 @@
+# Optional dependency — ONLY for encrypted notes at rest (task #42, see the README).
+#
+# The core embed/search/CLI/skill flow does not need this; keep it out of the base
+# requirements.txt so the plumbing and CI stay minimal (stdlib + sqlite-vec + apsw).
+# A brain that never turns encryption on never installs it. Install only if you enable
+# the [encryption] block in config/features.toml:
+#
+#   pip install -r requirements-crypt.txt
+#
+# Provides scripts/encrypt_vault.py's AES-256-GCM. Python's standard library has no
+# AES, and rolling one is not on the table; hashlib.scrypt and hmac cover the rest, so
+# this is the whole of the encryption dependency surface.
+cryptography>=42.0
