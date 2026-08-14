@@ -291,11 +291,20 @@ git-ignored. Nothing in your working tree moves.
 > turning this on.** If that matters, start a fresh repository and encrypt it before the
 > first note goes in.
 
-**On another machine**, clone as usual and then rebuild your notes from the blobs:
+**On another machine** — or after a lost laptop — a clone arrives with **no notes and no
+search index at all**, only blobs. Three steps rebuild the brain:
 
 ```bash
-python3 scripts/encrypt_vault.py --decrypt
+python3 scripts/encrypt_vault.py --decrypt   # blobs -> your notes, in their folders
+python3 scripts/embed_vault.py               # re-embed: vectors are never committed
+python3 scripts/hydrate_cache.py             # rebuild the search cache from those vectors
 ```
+
+Do not stop after `--decrypt`. Your notes are back and readable at that point, but the
+embeddings were never in the repository — they are derived, machine-specific and
+git-ignored — so search finds **nothing** until the last two steps have run. With the
+`ollama` backend, re-embedding a large vault takes a while; it is a one-time cost per
+machine.
 
 Day to day there is nothing to do — committing a note encrypts it. The other commands:
 
