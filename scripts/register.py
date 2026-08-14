@@ -7,9 +7,6 @@ lessons as PARA notes in this brain and to query this brain before solving anew.
 Re-running **refreshes** the block in place — it never duplicates it.
 
     python3 scripts/register.py <project-path>
-
-Independent of ai-project-status: registering a project never requires adopting
-that tooling.
 """
 from __future__ import annotations
 

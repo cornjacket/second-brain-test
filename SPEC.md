@@ -229,8 +229,8 @@ Re-running `register` **refreshes** the block in place (never duplicates it).
 <!-- second-brain:end -->
 ```
 
-**Independence.** This mechanism is fully independent of `ai-project-status`. A
-brain user must never be required to adopt that tooling.
+**Independence.** Registering a project never requires adopting any other tooling —
+this mechanism stands alone.
 
 ## 7. Runtime constraints
 
