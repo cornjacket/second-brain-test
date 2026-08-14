@@ -85,7 +85,11 @@ def committed_text(root: Path, ref: str = "HEAD") -> str:
 
 
 @unittest.skipUnless(HAVE_CRYPTO, "needs the optional 'cryptography' package")
-class MigrationTest(unittest.TestCase):
+class _EncryptedBrain(unittest.TestCase):
+    """A throwaway brain-shaped repo, seeded with three canaries. No tests of its own —
+    subclassed so the fixture is built once per case rather than inherited along with a
+    second copy of every assertion."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.brain = Path(self._tmp.name) / "brain"
@@ -128,6 +132,9 @@ class MigrationTest(unittest.TestCase):
     def enable(self, **kw):
         return ev.enable(self.brain, PASSPHRASE, **kw)
 
+
+@unittest.skipUnless(HAVE_CRYPTO, "needs the optional 'cryptography' package")
+class MigrationTest(_EncryptedBrain):
     # --- the point of the whole feature ---------------------------------------
 
     def test_note_body_is_absent_from_what_is_committed(self):
@@ -285,6 +292,95 @@ class MigrationTest(unittest.TestCase):
         self.assertFalse((self.brain / "enc").exists())
         self.assertIn("encryption = false",
                       (self.brain / "config" / "features.toml").read_text(encoding="utf-8"))
+
+
+@unittest.skipUnless(HAVE_CRYPTO, "needs the optional 'cryptography' package")
+class LeakSurfaceTest(_EncryptedBrain):
+    """The remaining places a fact about your notes could escape."""
+
+    def test_an_empty_bucket_leaves_no_trace(self):
+        """Which PARA roots you *do not* use is information too.
+
+        The golden ships `.gitkeep` only in the buckets that happen to be empty, so
+        committing them would have advertised exactly that. `vault/areas/` is empty in this
+        fixture; nothing may reveal that it exists at all.
+        """
+        self.enable()
+        committed = committed_text(self.brain)
+        for bucket in ("areas", "archive"):
+            with self.subTest(bucket=bucket):
+                self.assertNotIn(f"vault/{bucket}", committed)
+                self.assertNotIn(".gitkeep", committed)
+
+    def test_editing_a_note_does_not_change_its_blob_name(self):
+        """Otherwise every edit is a delete-plus-add, and the diff advertises churn."""
+        self.enable()
+        before = sorted(p.name for p in (self.brain / "enc").glob(f"*{ev.SUFFIX}"))
+        (self.brain / self.note).write_text("---\ntags: [t]\n---\n\n# Plan\n\nRevised.\n",
+                                            encoding="utf-8")
+        ev.sync(self.brain, PASSPHRASE)
+        after = sorted(p.name for p in (self.brain / "enc").glob(f"*{ev.SUFFIX}"))
+        self.assertEqual(after, before)
+
+    def test_the_migration_commit_message_names_no_note(self):
+        self.enable()
+        subjects = subprocess.run(["git", "log", "--format=%s%n%b"], cwd=self.brain,
+                                  capture_output=True, text=True).stdout
+        for canary in (BODY_CANARY, NAME_CANARY, DIR_CANARY):
+            self.assertNotIn(canary, subjects)
+
+    # --- the passphrase must not travel with the ciphertext -----------------------
+
+    def _stage_key_inside_repo(self) -> Path:
+        key = self.brain / "secret.key"
+        key.write_text(PASSPHRASE, encoding="utf-8")
+        _git(self.brain, "config", "secondbrain.passphrasefile", str(key))
+        _git(self.brain, "add", "-f", "--", "secret.key")
+        return key
+
+    def test_a_staged_passphrase_file_blocks_the_commit(self):
+        """The one leak that is not partial: the key beside the ciphertext is the brain."""
+        self.enable()
+        self._stage_key_inside_repo()
+        self.assertIsNotNone(ev.passphrase_file_problem(self.brain))
+
+    def test_a_passphrase_file_outside_the_repo_is_fine(self):
+        self.enable()
+        self.assertIsNone(ev.passphrase_file_problem(self.brain))
+
+    def test_an_unstaged_key_inside_the_repo_does_not_block_work(self):
+        """A bad habit, not an accident in progress — doctor says so; the commit proceeds."""
+        self.enable()
+        key = self.brain / "secret.key"
+        key.write_text(PASSPHRASE, encoding="utf-8")
+        _git(self.brain, "config", "secondbrain.passphrasefile", str(key))
+        self.assertIsNone(ev.passphrase_file_problem(self.brain))
+
+    # --- a half-finished migration must be named, not hidden ----------------------
+
+    def test_the_toggle_on_without_a_keyfile_is_reported(self):
+        """`encryption = true` is a claim. enc/keyfile.json is the fact.
+
+        A brain in this state looks encrypted to every tool that reads the toggle while its
+        notes are still plaintext — the worst possible combination to be silent about.
+        """
+        import os
+        sys.path.insert(0, str(SCRIPTS))
+        import doctor
+        os.environ["SECOND_BRAIN_ENCRYPTION"] = "1"
+        self.addCleanup(os.environ.pop, "SECOND_BRAIN_ENCRYPTION", None)
+        from features import _config
+        _config.cache_clear()
+        real_root = doctor.REPO_ROOT
+        doctor.REPO_ROOT = self.brain
+        self.addCleanup(setattr, doctor, "REPO_ROOT", real_root)
+
+        rep = doctor.Report()
+        doctor.check_encryption(rep)
+        self.assertGreater(rep.problems, 0,
+                           "doctor stayed silent on a brain claiming encryption it has not "
+                           "performed — the notes are plaintext and everything reading the "
+                           "toggle believes otherwise")
 
 
 class UntrackIsNotDeleteTest(unittest.TestCase):

@@ -382,13 +382,24 @@ IGNORE_BODY = "\n".join([
 
 
 def content_notes(root: Path = REPO_ROOT) -> list[str]:
-    """Every note this brain would encrypt, brain-relative and sorted."""
-    notes: list[str] = []
-    for name in CONTENT_ROOTS:
-        base = root / "vault" / name
-        if base.is_dir():
-            notes += [p.relative_to(root).as_posix() for p in base.rglob("*.md")]
-    return sorted(n for n in notes if n not in MACHINERY)
+    """Every note this brain would encrypt, brain-relative and sorted.
+
+    The **whole vault**, not just the PARA roots. Enumerating the roots looked equivalent
+    and was not: a note in any other vault folder — ``inbox/`` while you triage, or a
+    grouping you invent next year — is still yours, is preserved by every upgrade, and
+    would have been left out. Git-ignored and never committed, so it would not leak; it
+    would just quietly stop being backed up, which is the harder failure to notice.
+    ``CONTENT_ROOTS`` stays, but only for rebuilding the skeleton on decrypt.
+
+    ``vault/templates/`` is excluded because it is devkit-owned, not because of where it
+    sits — see ``MACHINERY`` and the rule it implements.
+    """
+    base = root / "vault"
+    if not base.is_dir():
+        return []
+    notes = [p.relative_to(root).as_posix() for p in base.rglob("*.md")]
+    return sorted(n for n in notes
+                  if n not in MACHINERY and not n.startswith("vault/templates/"))
 
 
 # --- the migration ------------------------------------------------------------
@@ -559,6 +570,35 @@ def sync(root: Path, passphrase: str) -> tuple[list[str], list[str]]:
     return encrypted, removed
 
 
+def passphrase_file_problem(root: Path = REPO_ROOT) -> str | None:
+    """Is the passphrase file about to be committed? Returns the complaint, or None.
+
+    Blocking a commit is a heavy thing to do, so it is reserved for the one case that is
+    unrecoverable: the key is **staged or already tracked**, and the next push publishes
+    it. A key that merely *sits* inside the repo is untracked and ignored, which is a bad
+    habit rather than an accident in progress — `doctor.py` says so without stopping work.
+
+    Committing the passphrase alongside the ciphertext it unlocks is not a partial leak of
+    the brain. It is all of it.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import passphrase as pp
+
+    key = pp.configured_path(root) or pp.default_path(root)
+    if not pp.is_inside_repo(key, root):
+        return None
+    rel = key.resolve().relative_to(root.resolve()).as_posix()
+    staged = _git(root, "diff", "--cached", "--name-only", check=False).stdout.split()
+    tracked = _git(root, "ls-files", "--", rel, check=False).stdout.strip()
+    if rel in staged or tracked:
+        return (f"the passphrase file {rel} is inside this brain and is staged/tracked — "
+                f"committing it would publish the key next to the ciphertext it unlocks, "
+                f"which is the whole brain. Run `git rm --cached -- {rel}`, move the file "
+                f"outside the repository, and point `git config secondbrain.passphrasefile` "
+                f"at the new location.")
+    return None
+
+
 def _resolve_passphrase(root: Path) -> str:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from passphrase import resolve
@@ -599,6 +639,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         passphrase = _resolve_passphrase(root)
         if args.precommit:
+            problem = passphrase_file_problem(root)
+            if problem:
+                print(f"encrypt_vault: {problem}", file=sys.stderr)
+                return 1
             # Encrypt AFTER the other hook steps: glossary auto-linking may have edited the
             # note, and the blob must carry the text that is actually being committed.
             encrypted, removed = sync(root, passphrase)
