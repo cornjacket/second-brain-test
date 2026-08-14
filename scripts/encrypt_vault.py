@@ -46,12 +46,16 @@ table; ``hashlib.scrypt`` and ``hmac`` cover everything else.
 """
 from __future__ import annotations
 
+import argparse
 import base64
 import hashlib
 import hmac
 import json
-import os
+import re
 import secrets
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -347,3 +351,271 @@ def orphan_blobs(keys: Keys, rel_paths, existing_names) -> set[str]:
     """
     live = {blob_name(keys, rel) for rel in rel_paths}
     return {name for name in existing_names if name.endswith(SUFFIX)} - live
+
+
+# --- the content set ----------------------------------------------------------
+# What gets encrypted follows a rule rather than a list: *if update_brain.py may overwrite
+# it, it is machinery and stays plaintext; otherwise it is content.* An upgrade must never
+# need a passphrase, and anything the devkit is free to overwrite is identical in every
+# brain, so it says nothing about you. That yields the vault minus exactly one carve-out.
+CONTENT_ROOTS = ("projects", "areas", "resources", "archive", "glossary")
+MACHINERY = ("vault/templates/new-note.md",)
+
+IGNORE_BEGIN = "# second-brain:encryption:begin"
+IGNORE_END = "# second-brain:encryption:end"
+# Default-deny over the vault: a future file type — an Obsidian .canvas, an attachment, a
+# stray export — cannot silently leak. The one exception is the devkit-owned note template,
+# which a CI gate requires to stay readable. `!/vault/templates/` must precede the file
+# negation because git cannot re-include a file underneath an excluded DIRECTORY.
+#
+# No .gitkeep is re-included. The golden ships them only in the buckets that happen to be
+# empty, so committing them would advertise which buckets you actually write into — the
+# skeleton is recreated from CONTENT_ROOTS instead.
+IGNORE_BODY = "\n".join([
+    "# Every note is content — default-deny, so a new file type cannot leak.",
+    "# No directory under vault/ is committed: a folder name is a tell on its own.",
+    "/vault/**",
+    "# The devkit-owned note template is machinery, not content, and must stay readable.",
+    "!/vault/templates/",
+    "!/vault/templates/new-note.md",
+])
+
+
+def content_notes(root: Path = REPO_ROOT) -> list[str]:
+    """Every note this brain would encrypt, brain-relative and sorted."""
+    notes: list[str] = []
+    for name in CONTENT_ROOTS:
+        base = root / "vault" / name
+        if base.is_dir():
+            notes += [p.relative_to(root).as_posix() for p in base.rglob("*.md")]
+    return sorted(n for n in notes if n not in MACHINERY)
+
+
+# --- the migration ------------------------------------------------------------
+# Enabling encryption is a MIGRATION, not a flag. `encryption = true` in a brain whose
+# notes are still plaintext describes a state that does not exist, so the toggle is
+# written by the migration rather than the migration triggered by the toggle.
+
+def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True,
+                          check=check, timeout=120)
+
+
+def set_toggle(root: Path, value: bool) -> None:
+    """Write ``encryption = <value>`` into this brain's config/features.toml."""
+    path = root / "config" / "features.toml"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    line = f"encryption = {'true' if value else 'false'}"
+    if re.search(r"^encryption\s*=.*$", text, flags=re.MULTILINE):
+        text = re.sub(r"^encryption\s*=.*$", line, text, count=1, flags=re.MULTILINE)
+    else:
+        # Before the first [section]: `encryption` is a top-level toggle, and a key written
+        # after a table header would silently become a member of that table instead.
+        head, sep, tail = text.partition("\n[")
+        head = head.rstrip("\n") + f"\n{line}\n"
+        text = head + (sep + tail if sep else "")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def set_ignore_rules(root: Path, enabled: bool) -> None:
+    """Add or remove the vault default-deny block in this brain's .gitignore."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from marked_block import remove_block, splice_block
+
+    path = root / ".gitignore"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    new = splice_block(text, IGNORE_BEGIN, IGNORE_END, IGNORE_BODY) if enabled \
+        else remove_block(text, IGNORE_BEGIN, IGNORE_END)
+    path.write_text(new, encoding="utf-8")
+
+
+def preflight(root: Path, passphrase: str) -> list[str]:
+    """Everything that must be true before a migration touches anything. Empty == go.
+
+    Runs BEFORE any write, so a brain that fails preflight is left exactly as it was —
+    the same stance ``create_second_brain.py --remote`` takes.
+    """
+    problems: list[str] = []
+    try:
+        _aesgcm(b"\x00" * 32)
+    except EncryptionError as exc:
+        problems.append(str(exc))
+    if not passphrase.strip():
+        problems.append("the passphrase is empty")
+    try:
+        dirty = _git(root, "status", "--porcelain").stdout.strip()
+        if dirty:
+            problems.append(
+                "the working tree has uncommitted changes. Commit or stash them first — a "
+                "migration that rewrites what git tracks must be reviewable as one commit:\n    "
+                + "\n    ".join(dirty.splitlines()[:10]))
+    except (OSError, subprocess.SubprocessError) as exc:
+        problems.append(f"cannot read git status: {exc}")
+    return problems
+
+
+def warn_about_history(root: Path) -> None:
+    """Say plainly that enabling encryption does not reach backwards.
+
+    Printed rather than raised: it is a fact about the past, not a reason to refuse. But it
+    has to be said *before* the migration, because afterwards the brain looks protected and
+    the plaintext in the remote is easy to forget.
+    """
+    remote = _git(root, "remote", check=False).stdout.strip()
+    if not remote:
+        return
+    print("\n  ⚠️  This brain has a git remote.")
+    print("      Encryption changes what FUTURE commits contain. Every note you have already")
+    print("      pushed stays in that history, readable, until the history itself is rewritten")
+    print("      or the remote is deleted. Encrypting now does not undo it.\n")
+
+
+def enable(root: Path, passphrase: str, *, hint: str | None = None,
+           commit: bool = True) -> list[str]:
+    """Migrate a plaintext brain to encrypted. Returns the notes encrypted."""
+    if (root / "enc" / "keyfile.json").exists():
+        raise EncryptionError("this brain is already encrypted (enc/keyfile.json exists)")
+    problems = preflight(root, passphrase)
+    if problems:
+        raise EncryptionError("cannot enable encryption:\n  - " + "\n  - ".join(problems))
+    warn_about_history(root)
+
+    save_keyfile(new_keyfile(passphrase, hint=hint), root / "enc" / "keyfile.json")
+    keys = keys_from_keyfile(load_keyfile(root / "enc" / "keyfile.json"), passphrase)
+
+    notes = content_notes(root)
+    for rel in notes:
+        encrypt_file(keys, rel, root)
+
+    set_ignore_rules(root, True)
+    set_toggle(root, True)
+    # Stop tracking the plaintext WITHOUT deleting it: --cached leaves the working tree
+    # alone, so Obsidian, search and the embedder carry on exactly as before. This is the
+    # step that makes the ignore rules bite; without it the notes stay tracked and ignored
+    # files that are already tracked keep being committed.
+    for rel in notes:
+        _git(root, "rm", "--cached", "-q", "--", rel, check=False)
+    _git(root, "add", "--", "enc", ".gitignore", "config/features.toml")
+    if commit:
+        _git(root, "commit", "-q", "-m",
+             f"encrypt: switch this brain to encrypted notes ({len(notes)} notes)")
+    return notes
+
+
+def decrypt_all(root: Path, passphrase: str) -> list[str]:
+    """Rebuild the plaintext working tree from ``enc/`` — the post-clone step.
+
+    Directories are **reconstructed, not restored**: nothing under vault/ is committed, so
+    each note's parent is created from the path inside its own envelope. The PARA skeleton
+    comes from CONTENT_ROOTS, not from committed placeholders.
+    """
+    keys = keys_from_keyfile(load_keyfile(root / "enc" / "keyfile.json"), passphrase)
+    for name in CONTENT_ROOTS:
+        (root / "vault" / name).mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for blob in sorted((root / "enc").glob(f"*{SUFFIX}")):
+        rel, body = decrypt_note(keys, blob.read_bytes())
+        dest = root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(body)
+        written.append(rel)
+    return sorted(written)
+
+
+def disable(root: Path, passphrase: str, *, commit: bool = True) -> list[str]:
+    """Go back to committing plaintext notes. The ciphertext stays in history."""
+    notes = decrypt_all(root, passphrase)
+    set_ignore_rules(root, False)
+    set_toggle(root, False)
+    _git(root, "rm", "-r", "-q", "--cached", "--", "enc", check=False)
+    shutil.rmtree(root / "enc", ignore_errors=True)
+    _git(root, "add", "--", "vault", ".gitignore", "config/features.toml")
+    if commit:
+        _git(root, "commit", "-q", "-m",
+             f"encrypt: switch this brain back to plaintext notes ({len(notes)} notes)")
+    print("\n  ⚠️  The encrypted blobs remain in this repository's history. Disabling stops")
+    print("      future commits from being encrypted; it does not remove the old ones.\n")
+    return notes
+
+
+def sync(root: Path, passphrase: str) -> tuple[list[str], list[str]]:
+    """Re-encrypt what changed and drop orphans. Returns ``(encrypted, removed)``."""
+    keys = keys_from_keyfile(load_keyfile(root / "enc" / "keyfile.json"), passphrase)
+    notes = content_notes(root)
+    encrypted = [rel for rel in notes if encrypt_file(keys, rel, root)[1]]
+    existing = [p.name for p in (root / "enc").glob(f"*{SUFFIX}")]
+    removed = sorted(orphan_blobs(keys, notes, existing))
+    for name in removed:
+        (root / "enc" / name).unlink(missing_ok=True)
+    return encrypted, removed
+
+
+def _resolve_passphrase(root: Path) -> str:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from passphrase import resolve
+    return resolve(root)
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Encrypt this brain's notes at rest (bodies and filenames).")
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--enable", action="store_true",
+                   help="migrate this brain to encrypted notes (one commit)")
+    g.add_argument("--decrypt", action="store_true",
+                   help="rebuild the plaintext working tree from enc/ (after a clone)")
+    g.add_argument("--disable", action="store_true",
+                   help="go back to committing plaintext notes")
+    g.add_argument("--sync", action="store_true",
+                   help="re-encrypt changed notes and drop orphaned blobs")
+    g.add_argument("--name-of", metavar="PATH", help="print the committed blob name for a note")
+    g.add_argument("--path-of", metavar="NAME", help="print the note path behind a blob name")
+    g.add_argument("--set-hint", metavar="TEXT", help="set the passphrase hint in the keyfile")
+    ap.add_argument("--hint", metavar="TEXT", default=None,
+                    help="with --enable: an optional passphrase reminder, readable by anyone "
+                         "who can read the repo")
+    args = ap.parse_args(argv)
+    root = REPO_ROOT
+
+    try:
+        passphrase = _resolve_passphrase(root)
+        if args.enable:
+            notes = enable(root, passphrase, hint=args.hint)
+            print(f"encrypted {len(notes)} note(s) -> enc/ ; the vault is now git-ignored")
+        elif args.decrypt:
+            notes = decrypt_all(root, passphrase)
+            print(f"restored {len(notes)} note(s) into vault/")
+        elif args.disable:
+            notes = disable(root, passphrase)
+            print(f"restored {len(notes)} note(s) and stopped encrypting")
+        elif args.sync:
+            encrypted, removed = sync(root, passphrase)
+            print(f"encrypted {len(encrypted)} changed note(s); removed {len(removed)} orphan(s)")
+        elif args.name_of:
+            keys = keys_from_keyfile(load_keyfile(root / "enc" / "keyfile.json"), passphrase)
+            print(blob_name(keys, args.name_of))
+        elif args.path_of:
+            keys = keys_from_keyfile(load_keyfile(root / "enc" / "keyfile.json"), passphrase)
+            blob = root / "enc" / args.path_of
+            if not blob.exists():
+                raise EncryptionError(f"no blob named {args.path_of} in enc/")
+            print(decrypt_note(keys, blob.read_bytes())[0])
+        elif args.set_hint:
+            path = root / "enc" / "keyfile.json"
+            keyfile = load_keyfile(path)
+            keys_from_keyfile(keyfile, passphrase)  # refuse to edit a keyfile you cannot open
+            keyfile["hint"] = args.set_hint
+            save_keyfile(keyfile, path)
+            print("hint updated (readable by anyone who can read this repo)")
+    except EncryptionError as exc:
+        print(f"encrypt_vault: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # passphrase.PassphraseError and friends
+        print(f"encrypt_vault: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
