@@ -47,7 +47,7 @@ sys.path.insert(0, str(SCRIPTS))
 from embedder import EMBED_DIM, backend_id, backend_name  # noqa: E402
 from features import hybrid_search, rrf_k  # noqa: E402
 import embed_staged as es  # noqa: E402  (write_sidecar / sidecar_path helpers)
-from note_view import content_hash  # noqa: E402  (the embed-input fingerprint)
+from note_view import content_hash, embed_excluded  # noqa: E402  (the embed-input fingerprint)
 
 
 class Report:
@@ -256,13 +256,42 @@ def check_ollama(rep: Report) -> None:
 # Tier 2 — consistency (vault ↔ sidecar ↔ db)
 # --------------------------------------------------------------------------- #
 
+def _excluded(p: Path) -> bool:
+    try:
+        return embed_excluded(p.read_text(encoding="utf-8"))
+    except OSError:
+        return False  # unreadable — treat as a note and let the normal checks flag it
+
+
 def para_notes() -> set[str]:
-    """Every indexable PARA note, as a repo-relative posix path."""
+    """Every **indexable** PARA note, as a repo-relative posix path.
+
+    Files marked ``embed: false`` are Markdown living under a PARA root without being notes,
+    so they are excluded here — otherwise every one of them would be reported as a note with a
+    missing sidecar, and ``--repair`` would dutifully embed the very files the key exists to
+    keep out.
+    """
     notes: set[str] = set()
     for root in PARA_ROOTS:
         for p in (VAULT_DIR / root).rglob("*.md"):
+            if _excluded(p):
+                continue
             notes.add(p.relative_to(REPO_ROOT).as_posix())
     return notes
+
+
+def excluded_notes() -> list[str]:
+    """Files under a PARA root carrying ``embed: false``, so the count can be *reported*.
+
+    An exclusion nobody can see is the same failure as a silent one: the total note count
+    just looks smaller than expected, with nothing saying why.
+    """
+    out: list[str] = []
+    for root in PARA_ROOTS:
+        for p in (VAULT_DIR / root).rglob("*.md"):
+            if _excluded(p):
+                out.append(p.relative_to(REPO_ROOT).as_posix())
+    return sorted(out)
 
 
 def all_sidecars() -> list[Path]:
@@ -426,6 +455,7 @@ def scan() -> dict:
 
     return {
         "notes": notes,
+        "excluded": excluded_notes(),
         "sidecars": sidecars,
         "active": active,
         "notes_wo_sidecar": notes_wo_sidecar,
@@ -489,6 +519,14 @@ def report_consistency(rep: Report, st: dict) -> None:
     clean = not any(st[k] for k in (
         "notes_wo_sidecar", "orphan_sidecars", "missing_from_db", "stale_in_db",
         "mixed", "bad_dim", "unreadable", "stale_hash")) and not st["db_missing"] and not pdf_problem
+    # Say what was deliberately left out. Without this the note count is simply smaller than
+    # the file count with nothing explaining the gap, which is the silent-exclusion failure
+    # the opt-out is designed to avoid — just relocated from the embedder to the report.
+    if st.get("excluded"):
+        rep.info(f"{len(st['excluded'])} file(s) excluded by embed: false — "
+                 f"{', '.join(st['excluded'][:3])}"
+                 f"{', …' if len(st['excluded']) > 3 else ''}")
+
     if clean:
         pdf_tail = f" + {len(pdf.get('sidecars', {}))} pdf(s)" if pdf.get("sidecars") else ""
         rep.ok(f"vault↔sidecar↔db in sync ({len(st['notes'])} note(s){pdf_tail})")

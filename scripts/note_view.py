@@ -195,6 +195,39 @@ def frontmatter_tags(text: str) -> list[str]:
     return []
 
 
+def embed_excluded(text: str) -> bool:
+    """Is this file marked ``embed: false`` in its frontmatter — a file, not a note?
+
+    Location decides embedding everywhere else in this system: a Markdown file under a PARA
+    root *is* a note. That leaves no way to keep supporting material — a project README,
+    working scratch, a draft — beside the note it belongs to without it becoming a searchable
+    note of its own and diluting retrieval.
+
+    **Opt-out, never opt-in, and the polarity is the whole design.** Embedding stays the
+    default, so a file nobody tagged is embedded and *visible*: it turns up in results, where
+    a wrong exclusion is obvious and one line fixes it. Under opt-in the same forgetfulness
+    makes a real note **silently unsearchable** — indistinguishable from a note that does not
+    exist, and discovered only on the day it is needed and does not come back.
+
+    That is also why this parser **fails open**. Anything it does not confidently read as
+    false — a missing key, a typo, a value it cannot parse — means *embed*. The cost of
+    wrongly embedding is a stray search hit; the cost of wrongly skipping is an invisible
+    note. Only an explicit ``false`` / ``no`` / ``off`` excludes.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].rstrip("\r\n") != "---":
+        return False
+    for line in lines[1:]:
+        if line.rstrip("\r\n") == "---":
+            return False  # end of frontmatter, no embed: key
+        stripped = line.strip()
+        if not stripped.startswith("embed:"):
+            continue
+        value = stripped[len("embed:"):].strip().strip("'\"").lower()
+        return value in ("false", "no", "off")
+    return False  # unterminated frontmatter — not real frontmatter, so not excluded
+
+
 def content_hash(text: str) -> str:
     """A byte-stable fingerprint of a note's substance — its canonical body.
 

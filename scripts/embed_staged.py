@@ -22,7 +22,7 @@ from embedder import backend_id, embed, is_deterministic  # noqa: E402
 from note_selection import notes_for_commit  # noqa: E402
 from note_view import (  # noqa: E402
     EMBED_TOKEN_BUDGET, NO_EMBED_BEGIN, NO_EMBED_END,
-    canonical_body, content_hash, estimate_tokens, has_unpaired_no_embed,
+    canonical_body, content_hash, embed_excluded, estimate_tokens, has_unpaired_no_embed,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -107,12 +107,33 @@ def warn_embed_input(note: str) -> None:
               f"tables) in a no-embed block, or split the note.")
 
 
+def drop_sidecar(note: str) -> bool:
+    """Remove ``note``'s sidecar if it has one; return whether anything was deleted.
+
+    Adding ``embed: false`` to a file that was **already embedded** must retract the vector,
+    not merely stop refreshing it. Left in place, the stale sidecar keeps being hydrated into
+    the cache, so the file goes on answering searches while its frontmatter says it is not a
+    note — the exclusion would appear to work and silently not.
+    """
+    dest = sidecar_path(note)
+    if not dest.exists():
+        return False
+    dest.unlink()
+    return True
+
+
 def main() -> int:
     # Vault sidecars are derived + git-ignored: refresh them locally, never commit.
     # The note list comes from note_selection, NOT from `git diff --cached`: with
     # encryption on the vault is git-ignored, so asking git what is staged returns
     # nothing and every note silently stops being embedded.
     for note in notes_for_commit():
+        if embed_excluded((REPO_ROOT / note).read_text(encoding="utf-8")):
+            if drop_sidecar(note):
+                print(f"  embed: false -> {note} (excluded; stale sidecar removed)")
+            else:
+                print(f"  embed: false -> {note} (excluded, not a note)")
+            continue
         warn_embed_input(note)
         dest, wrote = write_sidecar(note)
         if wrote:

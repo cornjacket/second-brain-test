@@ -32,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
-from note_view import canonical_body, frontmatter_tags  # noqa: E402
+from note_view import canonical_body, embed_excluded, frontmatter_tags  # noqa: E402
 
 import sqlite_vec  # noqa: E402
 
@@ -60,6 +60,15 @@ FTS_DDL = (
 def sidecar_for(note: str) -> Path:
     p = Path(note)
     return REPO_ROOT / p.parent / f".{p.stem}.embed.json"
+
+
+def _excluded(rel: str) -> bool:
+    """Does this path carry ``embed: false``? A deleted file cannot, so a missing file is False."""
+    path = REPO_ROOT / rel
+    try:
+        return embed_excluded(path.read_text(encoding="utf-8"))
+    except OSError:
+        return False
 
 
 def is_para_note(rel: str) -> bool:
@@ -148,6 +157,15 @@ def changed_in_commit(ref: str) -> tuple[list[str], list[str]]:
     # The working tree is the authority on whether a note exists, in either mode. Checking
     # it also fixes the plaintext case where someone untracks a note by hand and keeps it.
     to_delete = [n for n in to_delete if not (REPO_ROOT / n).exists()]
+
+    # A file marked `embed: false` is Markdown under a PARA root that is not a note, so it has
+    # no sidecar and `upsert()` would abort the whole post-commit run on it. It moves to the
+    # delete side rather than merely being dropped: adding the key to an already-indexed note
+    # must *retract* the row, or the file keeps answering searches while its frontmatter says
+    # it is not a note — an exclusion that appears to work and does not.
+    excluded = [n for n in to_upsert if _excluded(n)]
+    to_upsert = [n for n in to_upsert if n not in set(excluded)]
+    to_delete += excluded
     return to_upsert, to_delete
 
 

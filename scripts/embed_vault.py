@@ -27,7 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import backend_id  # noqa: E402
-from embed_staged import write_sidecar  # noqa: E402
+from embed_staged import drop_sidecar, write_sidecar  # noqa: E402
+from note_view import embed_excluded  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAULT_DIR = REPO_ROOT / "vault"
@@ -50,13 +51,24 @@ def main() -> int:
         print("embed_vault: no notes under vault/<para-root>/", file=sys.stderr)
         return 1
     backend = backend_id()
+    excluded = 0
     for note in notes:
+        if embed_excluded((REPO_ROOT / note).read_text(encoding="utf-8")):
+            excluded += 1
+            if drop_sidecar(note):
+                print(f"  embed: false -> {note} (excluded; stale sidecar removed)")
+            else:
+                print(f"  embed: false -> {note} (excluded, not a note)")
+            continue
         dest, wrote = write_sidecar(note)
         if wrote:
             print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} ({backend})")
         else:
             print(f"  skip (unchanged): {note}")
-    print(f"embedded {len(notes)} note(s) with backend '{backend}' — "
+    # State the exclusions rather than leaving them to be inferred from a smaller count:
+    # an exclusion nobody sees is the failure this feature is supposed to avoid.
+    tail = f" ({excluded} excluded by embed: false)" if excluded else ""
+    print(f"embedded {len(notes) - excluded} note(s) with backend '{backend}'{tail} — "
           f"run scripts/hydrate_cache.py to rebuild the cache")
     return 0
 
