@@ -84,6 +84,67 @@ class PlaintextModeTest(_BrainCase):
         """The plaintext contract: this commit's notes, not the whole working tree."""
         self.assertEqual(ns.notes_for_commit(root=self.brain), [])
 
+    def test_a_renamed_note_is_selected_at_its_NEW_path(self):
+        """Task #47. Git calls a move `R`, which `--diff-filter=ACM` silently dropped.
+
+        The note is byte-identical, so nothing here is `M`. If `R` leaves the filter again
+        this returns [] — and an empty selection is exactly how the bug presented: the commit
+        succeeds, nothing re-embeds, and the note quietly leaves the brain.
+        """
+        _git(self.brain, "add", "--", self.note)
+        _git(self.brain, "commit", "-q", "-m", "the note")
+        moved = "vault/archive/a-note.md"
+        _git(self.brain, "mv", self.note, moved)
+        selected = ns.notes_for_commit(root=self.brain)
+        self.assertIn(moved, selected)
+        self.assertNotIn(self.note, selected,
+                         "the OLD path must not be selected — there is nothing there to embed")
+
+    def test_a_plain_move_selects_the_same_as_git_mv(self):
+        """There is no user-side workaround, which is why the selector had to change.
+
+        `git mv` is shorthand for `mv` + `git rm` + `git add`; git records no difference and
+        infers the rename at diff time. Staging it "the long way" produces an identical
+        answer, so no wrapper script could have dodged this.
+        """
+        _git(self.brain, "add", "--", self.note)
+        _git(self.brain, "commit", "-q", "-m", "the note")
+        moved = "vault/resources/a-note.md"
+        (self.brain / moved).parent.mkdir(parents=True, exist_ok=True)
+        (self.brain / self.note).rename(self.brain / moved)
+        _git(self.brain, "rm", "-q", "--cached", "--", self.note)
+        _git(self.brain, "add", "--", moved)
+        self.assertIn(moved, ns.notes_for_commit(root=self.brain))
+
+    def test_a_moved_note_that_was_also_edited_is_still_selected(self):
+        """Git scores this `R<score>` (or splits it) depending on similarity — either way
+        the destination must come back, or an edit made during a move is lost."""
+        _git(self.brain, "add", "--", self.note)
+        _git(self.brain, "commit", "-q", "-m", "the note")
+        moved = "vault/archive/a-note.md"
+        _git(self.brain, "mv", self.note, moved)
+        (self.brain / moved).write_text(NOTE + "\nAn edit made during the move.\n",
+                                        encoding="utf-8")
+        _git(self.brain, "add", "--", moved)
+        self.assertIn(moved, ns.notes_for_commit(root=self.brain))
+
+    def test_a_deleted_note_is_NOT_selected(self):
+        """`D` stays out. Selecting it would send the embedder at a file that is gone —
+        removal is `update_cache`'s job, not the embedder's."""
+        _git(self.brain, "add", "--", self.note)
+        _git(self.brain, "commit", "-q", "-m", "the note")
+        _git(self.brain, "rm", "-q", "--", self.note)
+        self.assertEqual(ns.notes_for_commit(root=self.brain), [])
+
+    def test_a_note_moved_OUT_of_the_para_roots_is_not_selected(self):
+        """Moving a note to vault/templates/ takes it out of the embedding scope. The
+        destination is not a note, so there is nothing to embed at the new path."""
+        _git(self.brain, "add", "--", self.note)
+        _git(self.brain, "commit", "-q", "-m", "the note")
+        (self.brain / "vault" / "templates").mkdir(parents=True, exist_ok=True)
+        _git(self.brain, "mv", self.note, "vault/templates/a-note.md")
+        self.assertEqual(ns.notes_for_commit(root=self.brain), [])
+
     def test_non_notes_and_other_roots_are_ignored(self):
         for rel in ("vault/templates/new-note.md", "README.md", "vault/projects/x.txt"):
             self.write(rel, "x")

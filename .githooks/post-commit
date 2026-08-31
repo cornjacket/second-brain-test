@@ -14,6 +14,11 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 
 if ! python3 "$ROOT/scripts/update_cache.py" --from-commit HEAD; then
+  # `doctor.py --repair`, NOT `hydrate_cache.py`. Hydrate rebuilds the cache *from sidecars*,
+  # so it cannot help when the sidecar is what is missing — it prints a cheerful
+  # "hydrated N note(s)" and leaves the note just as unsearchable. Recovery advice that
+  # reports success without fixing anything is worse than no advice: the user stops looking.
+  # `--repair` re-embeds what has no sidecar and then rebuilds, which covers both causes.
   echo "second-brain: post-commit cache update failed — run" \
-       "'python3 scripts/hydrate_cache.py' manually to make new notes searchable." >&2
+       "'python3 scripts/doctor.py --repair' to re-embed and rebuild." >&2
 fi

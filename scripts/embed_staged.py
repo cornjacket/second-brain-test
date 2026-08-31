@@ -122,6 +122,36 @@ def drop_sidecar(note: str) -> bool:
     return True
 
 
+def prune_orphan_sidecars() -> list[str]:
+    """Delete sidecars under the PARA roots whose note is gone. Returns what was removed.
+
+    A sidecar lives *beside* its note and is git-ignored, so moving a note takes the ``.md``
+    and leaves the vector behind at the old path (task #47). Left there, the next
+    ``hydrate_cache`` — which rebuilds from sidecars, not from the vault — inserts a row for
+    a file that no longer exists, and search starts answering with a dead path.
+
+    On a **plaintext** brain ``update_cache.delete()`` already unlinks it as part of dropping
+    the old row. On an **encrypted** one it never runs: the commit contains an opaque blob,
+    not a PARA note, so nothing on the post-commit side ever sees the old path. This sweep is
+    what makes the two modes agree, and it is cheap — a stat walk of the vault, the same one
+    ``doctor`` already does on every scan.
+
+    An orphan under a PARA root is always garbage: the sidecar is derived, so there is no
+    case where keeping one without its note is correct.
+    """
+    removed: list[str] = []
+    for root in PARA_ROOTS:
+        base = REPO_ROOT / "vault" / root
+        if not base.is_dir():
+            continue
+        for side in base.rglob(".*.embed.json"):
+            note = side.parent / f"{side.name[1:-len('.embed.json')]}.md"
+            if not note.exists():
+                side.unlink()
+                removed.append(side.relative_to(REPO_ROOT).as_posix())
+    return sorted(removed)
+
+
 def main() -> int:
     # Vault sidecars are derived + git-ignored: refresh them locally, never commit.
     # The note list comes from note_selection, NOT from `git diff --cached`: with
@@ -140,6 +170,11 @@ def main() -> int:
             print(f"  embed: {note} -> {dest.relative_to(REPO_ROOT)} (derived, not committed)")
         else:
             print(f"  skip (substance unchanged): {note}")
+
+    # Last, so a note that moved has already been re-embedded at its new path and only the
+    # genuinely abandoned vector is left to collect.
+    for orphan in prune_orphan_sidecars():
+        print(f"  prune: {orphan} (its note is gone)")
     return 0
 
 

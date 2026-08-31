@@ -47,9 +47,27 @@ def _is_note(rel: str, roots: tuple[str, ...]) -> bool:
 
 
 def staged_notes(roots: tuple[str, ...] = PARA_ROOTS, root: Path = REPO_ROOT) -> list[str]:
-    """Notes git has staged (added/copied/modified). The plaintext-brain answer."""
+    """Notes git has staged (added/copied/modified/**renamed**). The plaintext-brain answer.
+
+    ``R`` is in the filter, and leaving it out was a real bug (task #47). Git labels every
+    staged change with one letter — ``A``dded, ``C``opied, ``M``odified, ``D``eleted,
+    ``R``enamed — and ``--diff-filter`` is a whitelist of those letters. Rename detection is
+    on by default, so git collapses the staged delete+add of a moved file into a single
+    ``R`` entry. With ``ACM`` that entry matched nothing: **a moved note was invisible here**,
+    so nothing re-embedded it, and the post-commit cache update then deleted the old row and
+    died on the new path's missing sidecar. Net effect of archiving a note: it left the brain.
+
+    How the file was moved makes no difference — ``git mv`` and a plain ``mv`` + ``git rm`` +
+    ``git add`` produce an identical index, and the rename is inferred at *diff* time. So
+    there is no user-side workaround, and no wrapper script would have helped: Obsidian moves
+    notes through its own file explorer and never calls anything of ours.
+
+    For an ``R`` entry ``--name-only`` prints the **destination** path — exactly the path that
+    needs embedding. The old path is left to ``update_cache``, which already understands
+    renames and drops its row.
+    """
     out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
         cwd=root, capture_output=True, text=True, check=True,
     ).stdout
     return [line for line in out.splitlines() if _is_note(line, roots)]
