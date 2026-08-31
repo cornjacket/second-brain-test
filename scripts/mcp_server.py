@@ -524,7 +524,7 @@ def _push(branch: str) -> str:
 @mcp.tool(structured_output=False)
 def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None,
              subpath: str = "", embed: bool = True) -> str:
-    """Create a NEW note in the brain, then commit and push it. The only writing tool.
+    """Create a NEW note — `subpath` nests it in a folder, `embed=False` marks a non-note. Commits + pushes.
 
     Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
     (durable over transient; "would I search for this in six months?"; link don't copy). Apply
@@ -582,6 +582,11 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     `get_note_template("not-a-note")` first. Embedding is the default deliberately: an unmarked
     file turns up in search where a wrong inclusion is obvious, whereas wrongly excluding one
     makes it **silently** unfindable. When unsure, leave it embedded.
+
+    **This description and this schema are the authority — not any convention you remember.**
+    This brain's tools change; a capability you do not recall (`subpath`, `embed`, `add_asset`)
+    is more likely new than absent. If what you remember disagrees with what is written here,
+    what is written here is right. `second_brain_overview` lists what changed and when.
 
     Refuses to overwrite an existing note. Committing is what embeds it (the pre-commit hook),
     so it is searchable immediately; the push is what makes it visible to the brain's other
@@ -716,7 +721,7 @@ _ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]+$")
 @mcp.tool(structured_output=False)
 def add_asset(para_root: str, subpath: str, filename: str, content: str,
               encoding: str = "text") -> str:
-    """Add a NON-note file beside a note — a diagram, an image, a data file. A write tool.
+    """Add a NON-note file (diagram, image, data) beside its note — never embedded. Commits + pushes.
 
     An asset is **material belonging to a note**, not a note of its own: a `.svg` the note
     displays, a `.csv` it discusses. It is stored, committed and pushed, and is **never
@@ -742,6 +747,9 @@ def add_asset(para_root: str, subpath: str, filename: str, content: str,
     Not `![[tile-pattern.svg]]`. Both render in Obsidian, but the relative form also renders on
     GitHub and resolves by *path* rather than by filename — so it does not depend on the
     filename being unique across the whole vault.
+
+    **This description and this schema are the authority — not any convention you remember.**
+    If what you recall about this brain disagrees with what is written here, this is right.
 
     Refuses to overwrite. Returns a report of what landed, including whether the push succeeded.
     """
@@ -814,7 +822,7 @@ def add_asset(para_root: str, subpath: str, filename: str, content: str,
 
 @mcp.tool(structured_output=False)
 def list_vault(para_root: str = "", match: str = "") -> list[dict]:
-    """Browse the vault's *structure* — call this BEFORE add_note to decide where a note belongs.
+    """Browse the vault's *structure*, subfolders included — call BEFORE add_note to decide where a note goes.
 
     With no argument: the PARA roots and how many notes each holds. With a `para_root`
     (projects / areas / resources / archive): the notes filed under it, so you can file a new note
@@ -844,9 +852,102 @@ def list_vault(para_root: str = "", match: str = "") -> list[dict]:
                 hint="pass match= to filter by title, or search_second_brain to find by meaning")
 
 
+# What changed in this brain's INTERFACE, newest first. Dated, and deliberately the first
+# thing `second_brain_overview` prints.
+#
+# Every other section of the overview describes the interface as it is now — which a model
+# with a confident, stale picture of this brain will read straight past, because it already
+# "knows" that. Only a dated list of what MOVED can contradict a memory, and it is the reason
+# the overview tool exists at all. Keep entries short, in the caller's vocabulary (tool and
+# parameter names), and prune anything older than a few releases: this is a corrective for
+# stale memory, not a changelog.
+INTERFACE_CHANGES = [
+    ("2026-08-31", "second_brain_overview is NEW — this tool. Call it before any write; "
+                   "it is generated from the live registry, so it cannot be stale."),
+    ("2026-08-30", "add_note gained `subpath` (nest under projects/ or archive/) and "
+                   "`embed=False` (write the `embed: false` opt-out for a non-note)."),
+    ("2026-08-30", "add_asset is NEW — put a diagram, image or data file beside its note. "
+                   "Never embedded."),
+    ("2026-08-30", "add_pdf gained `subpath`, so a PDF can sit in a project folder."),
+    ("2026-08-30", "get_note_template gained `variant` — \"note\" or \"not-a-note\"."),
+    ("2026-08-30", "Note filenames must now be UNIQUE vault-wide; the pre-commit hook refuses "
+                   "a duplicate rather than letting [[wikilinks]] misroute silently."),
+]
+
+
+@mcp.tool(structured_output=False)
+async def second_brain_overview() -> str:
+    """READ THIS FIRST, before any write — the current interface contract for this brain.
+
+    One call gives you: what changed recently, every tool that exists right now, and the
+    naming and filing conventions a write has to satisfy. It is generated from the live tool
+    registry, so it cannot describe a tool this server does not have.
+
+    **Call it before `add_note`, `add_asset` or `add_pdf`, and prefer it over what you
+    remember.** This brain's interface changes; a capability you cannot recall is more likely
+    new than absent, and the failure mode is silent — you write a plausible note the slow way,
+    or in the wrong shape, and nothing reports a problem. The dated list at the top is the part
+    that can actually contradict a stale memory, which is why it comes first.
+
+    Read-only: it writes nothing and commits nothing.
+    """
+    lines = ["# This brain's interface, as it is right now.",
+             "# Generated from the live tool registry. If this disagrees with what you "
+             "remember, this is right.",
+             "",
+             "## Recent changes (newest first) — check these against what you assumed"]
+    for date, change in INTERFACE_CHANGES:
+        lines.append(f"  {date}  {change}")
+
+    lines += ["", "## Tools available right now"]
+    for tool in sorted(await mcp.list_tools(), key=lambda x: x.name):
+        summary = " ".join((tool.description or "").strip().splitlines()[:1])
+        params = ", ".join((tool.inputSchema or {}).get("properties", {}))
+        lines.append(f"  {tool.name}({params})")
+        lines.append(f"      {summary}")
+
+    lines += ["", "## Conventions a write must satisfy", f"""
+  FILING. Four PARA roots by actionability: projects/ (a goal-bound effort), areas/ (an
+  ongoing responsibility), resources/ (durable reference), archive/ (inactive). Roots are
+  walked recursively, so a nested note behaves exactly like one at the root.
+
+  NESTING. `subpath` works under projects/ and archive/ ONLY. A project ends, so its note and
+  material archive as one unit — that is the whole motive. A resource is filed by topic and an
+  area never ends, so both refuse.
+
+  ENTRY NOTES. Every folder holding material carries a note named after it, at every level:
+  projects/algebra/algebra.md, projects/algebra/chapter-1/chapter-1.md. Obsidian resolves
+  [[wikilinks]] by NAME, so this is what keeps a link working after the folder moves to
+  archive/. Everything else in a folder is {{folder}}--{{descriptor}}.md.
+
+  NAMING. `title` becomes a kebab-case filename, so name folders as the title slugifies:
+  "Chapter 1" -> chapter-1.md -> the folder must be `chapter-1`, never `chapter1`.
+
+  UNIQUENESS. Note filenames must be unique across the whole vault — the pre-commit hook
+  REFUSES a duplicate, so a colliding title fails the write. Scope a generic name to its
+  folder ("Algebra Chapter 1") rather than reusing a bare one.
+
+  WHAT IS NOT A NOTE. Markdown that is material rather than a note takes `embed=False`
+  (frontmatter `embed: false`): kept in the vault, never embedded, never searchable. A file
+  that is not Markdown at all — a diagram, an image, data — goes in with `add_asset` and is
+  never embedded either way. Embedding is the DEFAULT deliberately: a wrong inclusion shows up
+  in a search result where it is obvious, a wrong exclusion is invisible.
+
+  IMAGES. Reference an asset from a note with a relative markdown link,
+  ![a tiling of the plane](tile-pattern.svg) — never ![[tile-pattern.svg]]. Both render in
+  Obsidian; only the relative form renders on GitHub and resolves by path rather than by
+  filename. Write real alt text: the filename is stripped from the embedding, the alt text is
+  kept, so the alt text is what makes the picture findable.
+
+  ORDER. list_vault (where does it belong?) -> search_second_brain (does it already exist?)
+  -> get_note_template (the house style + the bar for what earns a note) -> add_note ->
+  add_asset for any file beside it."""]
+    return "\n".join(lines)
+
+
 @mcp.tool(structured_output=False)
 def get_note_template(variant: str = "note") -> str:
-    """Return one of this brain's templates — the house style `add_note`'s body should follow.
+    """Return a note template — `variant`: "note" (default) or "not-a-note" (the `embed: false` opt-out).
 
     Read it before composing a note so a new note looks like the ones already here. These are
     the vault's live templates, which the brain's owner may have edited, so they are the
@@ -1047,7 +1148,7 @@ def list_inbox_pdfs(folder: str = "") -> list[dict]:
 
 @mcp.tool(structured_output=False)
 def add_pdf(pdf_path: str, para_root: str, subpath: str = "") -> str:
-    """Ingest a PDF: move it into ``vault/<para_root>/``, then chunk, embed, and index it.
+    """Ingest a PDF — `subpath` nests it beside a note; chunks, embeds and indexes its passages.
 
     ``pdf_path`` must be a file inside one of the configured source folders (see
     ``list_inbox_pdfs``); ``para_root`` is one of projects/areas/resources/archive. On success the
