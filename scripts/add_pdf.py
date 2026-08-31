@@ -135,7 +135,7 @@ def add_pdf(pdf_path, para_root: str, *, subpath: str = "", move: bool | None = 
                          f"not {para_root!r}")
     if subpath and not _SUBPATH_RE.match(subpath):
         raise ValueError(f"subpath must be lowercase kebab-case path segments "
-                         f"(e.g. 'algebra' or 'algebra/chapter1'), got {subpath!r}")
+                         f"(e.g. 'algebra' or 'algebra/chapter-1'), got {subpath!r}")
     if not pdf_path.is_file():
         raise ValueError(f"no such PDF: {pdf_path}")
     if pdf_path.suffix.lower() != ".pdf":
@@ -187,7 +187,7 @@ def main(argv=None) -> int:
     p_add.add_argument("pdf")
     p_add.add_argument("para_root", choices=PARA_ROOTS)
     p_add.add_argument("--subpath", default="",
-                       help="nest under the PARA root, e.g. 'algebra/chapter1' (projects/archive only)")
+                       help="nest under the PARA root, e.g. 'algebra/chapter-1' (projects/archive only)")
     p_add.add_argument("--copy", action="store_true", help="copy instead of move")
 
     args = ap.parse_args(argv)

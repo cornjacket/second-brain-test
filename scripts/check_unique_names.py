@@ -2,7 +2,7 @@
 """Refuse a commit that would put two notes with the same filename in the vault.
 
 Obsidian resolves ``[[wikilinks]]`` **by basename**, not by path. So two notes called
-``chapter1.md`` in different folders make every ``[[chapter1]]`` in the vault ambiguous —
+``chapter-1.md`` in different folders make every ``[[chapter-1]]`` in the vault ambiguous —
 Obsidian picks one, silently, and the other becomes unreachable by link. Search results get
 the same problem one step later: two rows whose titles are identical and whose paths differ
 in a segment nobody reads.
@@ -76,7 +76,7 @@ def main(argv: list[str]) -> int:
         for path in paths:
             print(f"      {path}", file=sys.stderr)
     print("Rename one of each pair. A folder-scoped name is the usual fix "
-          "(e.g. algebra--chapter1.md rather than chapter1.md).", file=sys.stderr)
+          "(e.g. algebra-chapter-1.md rather than chapter-1.md).", file=sys.stderr)
     return 1
 
 

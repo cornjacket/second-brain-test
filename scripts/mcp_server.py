@@ -443,7 +443,7 @@ def _safe_subpath(para_root: str, subpath: str) -> Path:
             f"at the root of vault/{para_root}/ instead.")
     if not _SUBPATH_RE.match(subpath):
         raise ValueError(f"subpath must be lowercase kebab-case path segments "
-                         f"(e.g. 'algebra' or 'algebra/chapter1'), got {subpath!r}")
+                         f"(e.g. 'algebra' or 'algebra/chapter-1'), got {subpath!r}")
     dest = VAULT / para_root / subpath
     # Defense in depth: _SUBPATH_RE already makes an escape impossible, so this can only fire
     # if someone loosens it. Cheap to keep on the one path that writes to disk.
@@ -545,17 +545,36 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     both dilutes the vector and can overflow the embedder's context outright.
 
     `subpath` (optional) nests the note **under** the PARA root, lowercase kebab-case, e.g.
-    `algebra/chapter1` -> `vault/projects/algebra/chapter1/<slug>.md`. Allowed under
+    `algebra/chapter-1` -> `vault/projects/algebra/chapter-1/<slug>.md`. Allowed under
     **projects/ and archive/ only** — a project is goal-bound and ends, so its note and its
     material want to archive as one unit; a resource is filed by topic and an area never ends,
     so neither has that motive and both refuse. PARA roots are walked recursively, so a nested
     note is embedded, searched and tag-linted exactly like one at the root.
 
     **Every folder that holds material carries an entry note named after it**, at every level:
-    `projects/algebra/algebra.md`, and `projects/algebra/chapter1/chapter1.md`. It looks
+    `projects/algebra/algebra.md`, and `projects/algebra/chapter-1/chapter-1.md`. It looks
     redundant and it is the form that works — Obsidian resolves `[[wikilinks]]` by name, so the
     link survives the move to `archive/`. Everything else in a folder is
-    `{folder}--{descriptor}.md`. Use `add_asset` for files that are not notes.
+    `{folder}--{descriptor}.md`.
+
+    **Name the folder as the title slugifies.** `title` becomes a kebab-case filename, so
+    "Chapter 1" -> `chapter-1.md`, and the folder must therefore be `chapter-1`, NOT `chapter1`
+    — otherwise the folder can never hold its own entry note. Choose the folder name by
+    slugifying the title you intend to give its entry note.
+
+    **Note filenames must be unique across the whole vault**, because Obsidian resolves
+    `[[wikilinks]]` by basename: two `chapter-1.md` files make every link to that name
+    ambiguous. The pre-commit hook **refuses** a duplicate, so a colliding title fails this
+    write rather than corrupting links silently. Where a generic name would collide, scope it to
+    its folder — `Algebra Chapter 1` -> `algebra-chapter-1.md`.
+
+    **Files that are not notes go in with `add_asset`** — a diagram, an image, a data file.
+    Reference one from this body with a **relative markdown link**,
+    `![a tiling of the plane](tile-pattern.svg)`, never `![[tile-pattern.svg]]`: both display in
+    Obsidian, but the relative form also renders on GitHub and resolves by path rather than by
+    filename. Write real alt text — the filename is stripped from the embedding and the alt text
+    is kept, so the alt text is what makes the picture findable at all. Create the note first,
+    then call `add_asset`.
 
     `embed=False` writes `embed: false` into the frontmatter: the file lands in the vault but is
     never embedded, cached, or returned by search — for material that belongs *beside* a note
@@ -1037,7 +1056,7 @@ def add_pdf(pdf_path: str, para_root: str, subpath: str = "") -> str:
     its index are git-ignored.
 
     ``subpath`` (optional) nests the PDF under the PARA root, lowercase kebab-case, e.g.
-    ``algebra/chapter1`` -> ``vault/projects/algebra/chapter1/``. Allowed under projects/ and
+    ``algebra/chapter-1`` -> ``vault/projects/algebra/chapter-1/``. Allowed under projects/ and
     archive/ only. Use it to put a PDF beside the note it belongs to — a project's paperwork
     trail living with its project note, so the folder archives as one unit.
     """
