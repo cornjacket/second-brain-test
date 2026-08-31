@@ -32,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
+from features import encryption  # noqa: E402  (which mode this brain is in)
 from note_view import canonical_body, embed_excluded, frontmatter_tags  # noqa: E402
 
 import sqlite_vec  # noqa: E402
@@ -121,6 +122,93 @@ def delete(db, note: str) -> None:
     print(f"  delete {note}")
 
 
+class BlindError(RuntimeError):
+    """The encrypted commit cannot be read — say so instead of reporting "nothing changed"."""
+
+
+def _touched_blobs(ref: str) -> set[str]:
+    """Blob file names this commit added or modified under ``enc/``."""
+    out = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "diff-tree", "--no-commit-id", "-r", "-M",
+         "--name-status", ref],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    names: set[str] = set()
+    for line in out.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2 or not parts[0]:
+            continue
+        status = parts[0][:1]
+        if status == "D":
+            continue                      # a deleted blob's path is unrecoverable — see below
+        # A rename line is `R<score>\told\tnew`; the destination is the last field.
+        rel = parts[-1]
+        if rel.startswith("enc/") and rel.endswith(".md.enc"):
+            names.add(Path(rel).name)
+    return names
+
+
+def encrypted_changes(ref: str) -> list[str]:
+    """Notes to upsert on an **encrypted** brain, where the commit holds no note at all.
+
+    With encryption on, a commit contains ``enc/<opaque>.md.enc`` and nothing else — the
+    vault is git-ignored. Asked what PARA notes changed, git answers *none*, truthfully and
+    uselessly, and the cache silently never updates: the note is embedded and committed but
+    not searchable until someone runs ``hydrate_cache`` by hand (task #48). This is the same
+    shape as the four selectors task #42 had to fix — **a component asking git a question a
+    git-ignored vault cannot answer, and getting a plausible empty answer rather than an
+    error.**
+
+    Resolved **forwards**, not backwards. A blob's name is a keyed HMAC of the note's path,
+    so the path cannot be recovered from the name — but every *live* note's name can simply
+    be computed, and the intersection with the blobs this commit touched is the answer. That
+    needs no decryption, and it is the same trick ``encrypt_vault.orphan_blobs`` uses.
+
+    Deletions are deliberately **not** handled here. A deleted note's blob name cannot be
+    mapped back to a path (the note is gone, so there is nothing to compute from), and
+    decrypting the old blob out of git history to recover it would be a lot of machinery for
+    a case ``prune_stale_rows`` already covers by asking a cheaper question: which cache rows
+    have no note on disk?
+
+    Raises ``BlindError`` if the keys cannot be derived. That distinction matters — returning
+    ``[]`` here would be indistinguishable from "this commit changed nothing", which is the
+    exact failure mode this function exists to remove.
+    """
+    try:
+        import encrypt_vault as ev
+        import passphrase as pp
+        keys = ev.keys_from_keyfile(ev.load_keyfile(REPO_ROOT / "enc" / "keyfile.json"),
+                                    pp.resolve(REPO_ROOT))
+    except Exception as exc:                      # missing dep, no passphrase, bad keyfile
+        raise BlindError(str(exc)) from exc
+
+    touched = _touched_blobs(ref)
+    if not touched:
+        return []
+    live = {}
+    for root in PARA_ROOTS:
+        base = REPO_ROOT / "vault" / root
+        if base.is_dir():
+            for path in base.rglob("*.md"):
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                live[ev.blob_name(keys, rel)] = rel
+    return sorted(rel for name, rel in live.items() if name in touched)
+
+
+def prune_stale_rows(db) -> list[str]:
+    """Cache rows whose note is no longer on disk. The deletion half, without any key.
+
+    Works in both modes and needs neither git nor the passphrase: a row naming a file that
+    does not exist can only be a note that was deleted or moved, and either way the row has
+    to go or search will answer with a dead path.
+    """
+    try:
+        rows = [r[0] for r in db.execute("SELECT source_file FROM notes")]
+    except Exception:
+        return []
+    return sorted(rel for rel in rows if not (REPO_ROOT / rel).exists())
+
+
 def changed_in_commit(ref: str) -> tuple[list[str], list[str]]:
     """(to_upsert, to_delete) PARA notes changed in REF vs its parent."""
     out = subprocess.run(
@@ -189,11 +277,41 @@ def main(argv: list[str]) -> int:
         for note in args.delete:
             delete(db, note)
     else:
-        to_upsert, to_delete = changed_in_commit(args.from_commit)
+        # Which question to ask depends on the mode, because the two commits look nothing
+        # alike: a plaintext commit contains the notes, an encrypted one contains only
+        # opaque blobs. Asking git the plaintext question on an encrypted brain returns a
+        # truthful, useless "nothing changed" — the #48 bug.
+        blind = ""
+        if encryption():
+            try:
+                to_upsert = encrypted_changes(args.from_commit)
+            except BlindError as exc:
+                to_upsert, blind = [], str(exc)
+            to_delete = []
+        else:
+            to_upsert, to_delete = changed_in_commit(args.from_commit)
+
+        # Rows for notes that are no longer on disk, in either mode. On a plaintext brain
+        # changed_in_commit has usually named them already; this catches what it cannot see
+        # — an encrypted deletion, or a note removed outside a commit.
+        stale = [n for n in prune_stale_rows(db) if n not in set(to_delete)]
+        to_delete = list(to_delete) + stale
+
         for note in to_delete:
             delete(db, note)
         for note in to_upsert:
             upsert(db, note)
+
+        if blind:
+            # Never exit 0 on a cache we could not update. The post-commit hook cannot fail
+            # the commit, so this message is the only signal the user gets — and silence here
+            # is precisely the failure being fixed.
+            print(f"update_cache: encryption is on but the keys could not be derived "
+                  f"({blind}) — this commit's notes are NOT in the search cache. Run "
+                  f"'python3 scripts/doctor.py --repair'.", file=sys.stderr)
+            db.commit()
+            db.close()
+            return 1
         if not (to_upsert or to_delete):
             print(f"update_cache: no PARA-note changes in {args.from_commit}")
 
