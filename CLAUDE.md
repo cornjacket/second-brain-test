@@ -51,7 +51,11 @@ is what happened; the *lesson* you drew from it is what transfers.
 
 - File the note under the right PARA root inside the vault: `vault/projects/`
   (goal-bound effort), `vault/areas/` (ongoing responsibility), `vault/resources/`
-  (durable reference), `vault/archive/` (inactive).
+  (durable reference), `vault/archive/` (inactive). **PARA roots are walked
+  recursively**, so a note in `projects/<project>/` is embedded, searched, tag-linted and
+  encrypted exactly like one at the root — which is what lets a project's note and its
+  material archive as one unit. (`vault/glossary/` is flat by contrast: a term filed in a
+  subfolder there is invisible to the glossary tools.)
 - Lowercase kebab-case filename, `.md`, with YAML frontmatter (`tags: [...]`).
   Link related notes with `[[wikilinks]]`. Start from the annotated example at
   [`vault/templates/new-note.md`](vault/templates/new-note.md) — copy it into the

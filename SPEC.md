@@ -34,6 +34,14 @@ Notes are organized with the **PARA** method. The four PARA directories are the
 roots is embedded; repo meta files (`README.md`, `CLAUDE.md`, `SPEC.md`,
 `scripts/`) are not, and neither are the two non-PARA sibling folders below.
 
+**Under** means *at any depth.* Every walker over a PARA root uses `rglob`, so
+`projects/<project>/note.md` is embedded, searched, tag-linted and encrypted exactly
+like `projects/note.md`. This is what makes colocation work — a project's note and its
+material in one folder that archives or deletes as a unit — and it is a
+guarantee, not an accident: a walker that switched to a flat `glob` would silently stop
+embedding every nested note. `vault/glossary/` is deliberately the opposite: **flat**,
+scanned with `glob`, because a controlled vocabulary is a single namespace.
+
 ```
 vault/                 # the Obsidian vault root; PARA roots live inside it
   projects/    # active efforts with a goal and an end
