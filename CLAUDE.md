@@ -77,13 +77,16 @@ is what happened; the *lesson* you drew from it is what transfers.
   goal-bound and ends, so its note and material archive as one unit; a resource is filed by
   topic and an area never ends, so both refuse. **Every folder that holds material carries a
   note named after it, at every level** — `projects/algebra/algebra.md`,
-  `projects/algebra/algebra-chapter-1/algebra-chapter-1.md`. It looks redundant and it is the
-  form that works: Obsidian resolves `[[wikilinks]]` by **name**, so the link survives the move
-  to `archive/`. Name folders as the title slugifies (`chapter-1`, not `chapter1`), or the entry
-  note cannot match its folder. **Name a child after its parent — `{parent}-{descriptor}` — for
-  a nested folder and a plain file alike** (`algebra-chapter-1/`, `algebra-progress.md`). That
-  prefix is what keeps the name unique: the entry-note rule turns every folder name into a note
-  name, and a bare `chapter-1/` works only until a second subject has a chapter 1.
+  `projects/algebra-1/algebra-1--chapter-1/algebra-1--chapter-1.md`. It looks redundant and it
+  is the form that works: Obsidian resolves `[[wikilinks]]` by **name**, so the link survives
+  the move to `archive/`. **A child is named after its parent — `{folder}--{descriptor}` — for
+  a nested folder and a plain file alike.** That prefix is what keeps the name unique: the
+  entry-note rule turns every folder name into a note name, and a bare `chapter-1/` works only
+  until a second subject has a chapter 1.
+  Over MCP, pass that structure as structure, never inside the title: `entry=True` names the
+  file after its folder, `descriptor="worked-solutions"` names one inside it. `title` is the H1
+  and nothing else — no title can produce a `--`, because the slugifier collapses any run of
+  non-alphanumerics to one hyphen. Writing a note by hand, just name the file yourself.
 - **Note filenames must be unique across the whole vault** — the pre-commit hook refuses a
   duplicate. Obsidian resolves `[[wikilinks]]` by name, so two `chapter-1.md` files make every
   link to that name ambiguous and silently misrouted. This used to hold by accident (a flat

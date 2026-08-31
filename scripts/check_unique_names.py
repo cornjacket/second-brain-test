@@ -76,7 +76,8 @@ def main(argv: list[str]) -> int:
         for path in paths:
             print(f"      {path}", file=sys.stderr)
     print("Rename one of each pair. A folder-scoped name is the usual fix "
-          "(e.g. algebra-chapter-1.md rather than chapter-1.md).", file=sys.stderr)
+          "(e.g. algebra-1--chapter-1.md rather than chapter-1.md — over MCP, add_note's "
+          "entry/descriptor parameters build that name for you).", file=sys.stderr)
     return 1
 
 

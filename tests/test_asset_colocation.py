@@ -27,6 +27,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import check_unique_names as un  # noqa: E402
+try:
+    import mcp_server as mcp  # noqa: E402
+except ImportError:  # the mcp SDK is an optional dep
+    mcp = None
 import note_view as nv  # noqa: E402
 
 
@@ -68,6 +72,99 @@ class AssetLinksLeaveTheVector(unittest.TestCase):
 
     def test_prose_containing_a_dotted_word_is_not_mangled(self):
         self.assertIn("version 1.2 of the spec", self.view("We use version 1.2 of the spec."))
+
+
+@unittest.skipIf(__import__('sys').modules.get('mcp_server') is None,
+                 'the optional mcp SDK is absent')
+class ComposeFilename(unittest.TestCase):
+    """`title` is the H1; structure is passed as structure (task #53).
+
+    The bug this closes: `--` encodes "scoped to its folder", `_slugify` collapses any run of
+    non-alphanumerics to one hyphen, so a caller asked to express structure through a display
+    string could not — and the failure only became visible after the commit and the push.
+    """
+
+    def compose(self, *a, **k):
+        return mcp.compose_note_filename(*a, **k)
+
+    def test_entry_takes_the_name_from_the_folder(self):
+        self.assertEqual(
+            self.compose("Chapter 1", "algebra-1/algebra-1--chapter-1", entry=True),
+            "algebra-1--chapter-1")
+
+    def test_entry_ignores_the_title_entirely(self):
+        # The point of decoupling: the H1 can read "Chapter 1" on a file that must be called
+        # algebra-1--chapter-1.md. Titling it "Algebra 1--Chapter 1" was a bad heading AND
+        # did not work.
+        for title in ("Chapter 1", "Anything At All", "x"):
+            self.assertEqual(self.compose(title, "a/b--c", entry=True), "b--c")
+
+    def test_descriptor_scopes_under_the_folder_and_the_join_survives(self):
+        self.assertEqual(
+            self.compose("Worked Solutions", "algebra-1/algebra-1--chapter-1",
+                         descriptor="worked-solutions"),
+            "algebra-1--chapter-1--worked-solutions")
+
+    def test_descriptor_is_slugified_but_the_join_is_added_after(self):
+        # Slugifying the JOINED string would collapse the `--` — the original bug, one level in.
+        self.assertEqual(self.compose("T", "a/b--c", descriptor="Worked Solutions"),
+                         "b--c--worked-solutions")
+
+    def test_entry_and_descriptor_together_are_an_error(self):
+        with self.assertRaises(ValueError):
+            self.compose("T", "a/b", entry=True, descriptor="x")
+
+    def test_either_without_subpath_is_an_error(self):
+        # Rejecting beats silently ignoring: a caller that passed entry=True believes the
+        # filename came from the folder, and would never check.
+        for kw in ({"entry": True}, {"descriptor": "x"}):
+            with self.assertRaises(ValueError):
+                self.compose("T", "", **kw)
+
+    def test_neither_is_the_old_behaviour_exactly(self):
+        # The regression guard for every flat note already in a vault.
+        self.assertEqual(self.compose("Vector Search", ""), "vector-search")
+        self.assertEqual(self.compose("Vector Search", "a/b"), "vector-search")
+
+    def test_no_title_can_produce_a_double_dash(self):
+        # The premise of the whole redesign, pinned so nobody "fixes" the slugifier instead.
+        for title in ("A--B", "A  B", "A -- B", "A._-B"):
+            self.assertNotIn("--", self.compose(title, ""))
+
+
+@unittest.skipIf(__import__('sys').modules.get('mcp_server') is None,
+                 'the optional mcp SDK is absent')
+class Guardrail(unittest.TestCase):
+    """A name that does not fit its folder is refused BEFORE the write — there is no undo."""
+
+    def check(self, stem, subpath):
+        mcp.check_scoped_name(stem, "projects", subpath, "T")
+
+    def test_the_entry_note_name_is_accepted(self):
+        self.check("algebra-1--chapter-1", "algebra-1/algebra-1--chapter-1")
+
+    def test_a_scoped_child_is_accepted(self):
+        self.check("algebra-1--chapter-1--worked-solutions", "algebra-1/algebra-1--chapter-1")
+
+    def test_a_bare_slugified_title_is_refused(self):
+        # Exactly what the failed call produced: chapter-1.md inside algebra-1--chapter-1/.
+        with self.assertRaises(ValueError):
+            self.check("chapter-1", "algebra-1/algebra-1--chapter-1")
+
+    def test_a_near_miss_prefix_is_refused(self):
+        # Single dash where the join must be double — the collapse, caught at the call.
+        with self.assertRaises(ValueError):
+            self.check("algebra-1-chapter-1", "algebra-1/algebra-1--chapter-1")
+
+    def test_the_error_names_the_arguments_that_would_work(self):
+        with self.assertRaises(ValueError) as cm:
+            self.check("chapter-1", "algebra-1/algebra-1--chapter-1")
+        msg = str(cm.exception)
+        self.assertIn("algebra-1--chapter-1.md", msg)
+        self.assertIn("entry=True", msg)
+
+    def test_no_subpath_means_no_constraint(self):
+        self.check("anything-at-all", "")
 
 
 class UniqueNames(unittest.TestCase):

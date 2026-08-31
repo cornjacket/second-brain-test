@@ -38,7 +38,7 @@ that is not a note has no business adding to it.
 Naming, when this lives in a project folder
 -------------------------------------------
     vault/projects/algebra/algebra.md            <- the entry note (embedded)
-    vault/projects/algebra/algebra-progress.md   <- material (embed: false)
+    vault/projects/algebra/algebra--progress.md  <- material (embed: false)
     vault/projects/algebra/practice-test-1.pdf   <- non-Markdown colocates already
 
 The entry note repeats the folder name. It looks redundant and it is the only form that
@@ -47,7 +47,7 @@ folder moves to vault/archive/, and every note title in the vault stays unique. 
 per-folder index.md or README.md would put many identically-named notes in one vault,
 breaking wikilink resolution and making search results unreadable.
 
-Everything else is named after its parent, {parent}-{descriptor} — a nested folder and a
+Everything else is named after its parent, {folder}--{descriptor} — a nested folder and a
 plain file alike. That prefix is what keeps the name unique: the entry-note rule turns
 every folder name into a note name, and note names must be unique across the whole vault.
 Folder names carry no `project-` prefix, though: the folder ends up in archive/, and a

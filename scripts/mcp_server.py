@@ -422,6 +422,69 @@ _SUBPATH_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
 SUBPATH_ROOTS = ("projects", "archive")
 
 
+def compose_note_filename(title: str, subpath: str = "", *, entry: bool = False,
+                          descriptor: str = "") -> str:
+    """The one place a note's filename is decided. Returns the stem, without ``.md``.
+
+    `title` used to do two jobs — the H1 *and* the filename, through a lossy slug. That is what
+    made the `{folder}--{descriptor}` convention impossible to satisfy: `--` encodes **structure**
+    ("this file is scoped to its folder"), and `_slugify` collapses every run of non-alphanumerics
+    to a single hyphen, so no title can express it. Asking the caller to smuggle structure through
+    a display string could not be fixed by tuning the slugifier — a double space would collapse
+    the same way, and even if it did not it would be invisible in a diff, trimmed by editors, and
+    impossible to dictate.
+
+    So structure is passed as structure. `entry=True` names the file after its folder;
+    `descriptor` scopes it under the folder. Both **compose forward** from the subpath, and the
+    `--` join is inserted *after* slugification, so it survives. `title` is now only the H1.
+
+    With neither, the filename is the slugified title exactly as before — which is what keeps
+    every flat note in an existing vault, and every existing caller, working unchanged.
+    """
+    if entry and descriptor:
+        raise ValueError("pass entry=True or descriptor=..., not both: entry names the file "
+                         "after its folder, descriptor names a file inside that folder")
+    if (entry or descriptor) and not subpath:
+        raise ValueError("entry and descriptor both name a file relative to its folder, so they "
+                         "require subpath. Either pass subpath, or drop them and the filename "
+                         "comes from the title.")
+    if entry:
+        return subpath.rsplit("/", 1)[-1]
+    if descriptor:
+        slug = _slugify(descriptor)
+        if not slug:
+            raise ValueError(f"descriptor {descriptor!r} has no usable characters")
+        # Joined AFTER slugifying, which is the whole point: slugify would collapse the `--`.
+        return f"{subpath.rsplit('/', 1)[-1]}--{slug}"
+    slug = _slugify(title)
+    if not slug:
+        raise ValueError(f"title {title!r} has no usable characters for a filename")
+    return slug
+
+
+def check_scoped_name(stem: str, para_root: str, subpath: str, title: str) -> None:
+    """Refuse a name that does not belong in its folder — BEFORE anything is written.
+
+    `add_note` commits and pushes, and there is no rename or delete tool, so a wrong filename
+    cannot be taken back through this interface. Post-hoc detection is worthless here: by the
+    time anyone notices, the folder has an entry note that does not match it and every
+    `[[wikilink]]` written against the intended name resolves to nothing. Same fail-loud posture
+    as the uniqueness hook — a bad write fails at the call.
+    """
+    if not subpath:
+        return
+    leaf = subpath.rsplit("/", 1)[-1]
+    if stem == leaf or stem.startswith(f"{leaf}--"):
+        return
+    raise ValueError(
+        f"{stem}.md does not belong in vault/{para_root}/{subpath}. A file in a folder is "
+        f"named after it: either {leaf}.md (the folder's entry note) or {leaf}--<descriptor>.md. "
+        f"Use entry=True for the entry note, or descriptor=\"...\" for anything else — "
+        f"e.g. add_note(title={title!r}, para_root={para_root!r}, subpath={subpath!r}, "
+        f"entry=True) creates {leaf}.md. Do not put the scoping in the title; it is slugified "
+        f"and `--` cannot survive that.")
+
+
 def _safe_subpath(para_root: str, subpath: str) -> Path:
     """``vault/<para_root>/<subpath>`` as a directory, refusing anything that could escape it.
 
@@ -523,8 +586,9 @@ def _push(branch: str) -> str:
 
 @mcp.tool(structured_output=False)
 def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None,
-             subpath: str = "", embed: bool = True) -> str:
-    """Create a NEW note — `subpath` nests it in a folder, `embed=False` marks a non-note. Commits + pushes.
+             subpath: str = "", embed: bool = True, entry: bool = False,
+             descriptor: str = "") -> str:
+    """Create a NEW note — `subpath` nests it, `entry`/`descriptor` name it, `embed=False` marks a non-note.
 
     Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
     (durable over transient; "would I search for this in six months?"; link don't copy). Apply
@@ -552,16 +616,35 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     note is embedded, searched and tag-linted exactly like one at the root.
 
     **Every folder that holds material carries an entry note named after it**, at every level:
-    `projects/algebra/algebra.md`, and `projects/algebra/algebra-chapter-1/algebra-chapter-1.md`.
-    It looks redundant and it is the form that works — Obsidian resolves `[[wikilinks]]` by
-    name, so the link survives the move to `archive/`.
+    `projects/algebra-1/algebra-1.md`, and
+    `projects/algebra-1/algebra-1--chapter-1/algebra-1--chapter-1.md`. It looks redundant and
+    it is the form that works — Obsidian resolves `[[wikilinks]]` by name, so the link survives
+    the move to `archive/`.
 
-    **Name a child after its parent — `{parent}-{descriptor}` — for a nested folder and a
-    plain file alike** (`algebra-chapter-1/`, `algebra-progress.md`). That prefix is not
-    decoration. The entry-note rule turns every folder name into a note name, and note names
-    must be unique vault-wide, so a bare `chapter-1/` works until a second subject has a
-    chapter 1 and then the hook refuses the write. Scoping makes the name unique by
-    construction rather than by luck.
+    **Do not put the filename in the title — pass the structure instead.** `title` is the H1
+    and nothing else. Two optional, mutually exclusive parameters name the file, and both
+    require `subpath`:
+
+    * `entry=True` — the file IS the folder's entry note. Filename := the last segment of
+      `subpath`. So `subpath="algebra-1/algebra-1--chapter-1", entry=True` writes
+      `algebra-1--chapter-1.md`, whatever the title says.
+    * `descriptor="worked-solutions"` — a file scoped under that folder. Filename :=
+      `{last segment}--{descriptor}` -> `algebra-1--chapter-1--worked-solutions.md`.
+
+    With neither, the filename is the slugified title, exactly as before.
+
+    **Why not just write it in the title:** `--` encodes structure, not prose, and `_slugify`
+    collapses every run of non-alphanumerics to a single hyphen — so **no title can produce a
+    double dash**, and none ever will. Passing structure as a parameter is also what frees the
+    H1 to read "Chapter 1" while the file stays fully scoped.
+
+    **The `--` prefix is what keeps the name unique.** The entry-note rule turns every folder
+    name into a note name, and note names must be unique vault-wide, so a bare `chapter-1/`
+    works only until a second subject has a chapter 1 — and then the hook refuses the write.
+
+    **A name that does not fit its folder is refused before anything is written.** With
+    `subpath` set, the filename must be the last segment or start with it plus `--`. This tool
+    commits and pushes and there is no undo through this interface, so the check is at the call.
 
     **Name the folder as the title slugifies.** `title` becomes a kebab-case filename, so
     "Chapter 1" -> `chapter-1.md`, and the folder must therefore be `chapter-1`, NOT `chapter1`
@@ -571,8 +654,8 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     **Note filenames must be unique across the whole vault**, because Obsidian resolves
     `[[wikilinks]]` by basename: two `chapter-1.md` files make every link to that name
     ambiguous. The pre-commit hook **refuses** a duplicate, so a colliding title fails this
-    write rather than corrupting links silently. This is why the naming rule above scopes a
-    child to its parent: pass `title="Algebra Chapter 1"`, not `title="Chapter 1"`.
+    write rather than corrupting links silently. `entry`/`descriptor` are how you satisfy it —
+    they scope the name to the folder for you, so the title never has to carry it.
 
     **Files that are not notes go in with `add_asset`** — a diagram, an image, a data file.
     Reference one from this body with a **relative markdown link**,
@@ -600,9 +683,8 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     """
     if para_root not in PARA_ROOTS:
         raise ValueError(f"para_root must be one of {PARA_ROOTS}, got {para_root!r}")
-    slug = _slugify(title)
-    if not slug:
-        raise ValueError(f"title {title!r} has no usable characters for a filename")
+    slug = compose_note_filename(title, subpath, entry=entry, descriptor=descriptor)
+    check_scoped_name(slug, para_root, subpath, title)
 
     dest_dir = _safe_subpath(para_root, subpath)
     path = dest_dir / f"{slug}.md"
@@ -707,17 +789,21 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     if subpath:
         leaf = subpath.rsplit("/", 1)[-1]
         if not (dest_dir / f"{leaf}.md").exists():
-            # The suggested title must slugify back to the folder name exactly, or the hint
-            # tells the caller to run a command that does not produce the file it promises.
-            # `_slugify` collapses any run of non-alphanumerics to ONE hyphen, so a folder
-            # name is always recoverable as a title by swapping hyphens for spaces.
-            suggested = leaf.replace("-", " ").title()
+            # COMPOSE FORWARD. The previous version inverted the slug — it guessed a title by
+            # mapping hyphens back to spaces — and so advised a call that could not produce the
+            # file it promised: for a folder named with `--` it suggested a double-SPACE title,
+            # which slugifies to a single hyphen. Running the real composition function and
+            # printing the arguments that produced the answer makes the hint correct by
+            # construction, the same way second_brain_overview is generated from the live
+            # registry rather than described by hand.
+            produced = compose_note_filename(title, subpath, entry=True)
             folder_hint = (f"\nFOLDER HINT: vault/{para_root}/{subpath} has no entry note. Every "
-                           f"folder carries a note named after it — "
-                           f"add_note(title=\"{suggested}\", para_root=\"{para_root}\", "
-                           f"subpath=\"{subpath}\") creates {leaf}.md, so [[{leaf}]] keeps "
-                           f"resolving after the folder moves to archive/. Name a folder for "
-                           f"its parent plus a descriptor, and name it as its title slugifies.")
+                           f"folder carries a note named after it — add_note(title=\"<the "
+                           f"heading you want>\", para_root=\"{para_root}\", "
+                           f"subpath=\"{subpath}\", entry=True) creates {produced}.md, so "
+                           f"[[{produced}]] keeps resolving after the folder moves to archive/. "
+                           f"`entry=True` takes the name from the folder, so the title is free "
+                           f"to be a readable heading.")
     return (f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
             f"{tag_hint}{folder_hint}")
 
@@ -873,6 +959,9 @@ def list_vault(para_root: str = "", match: str = "") -> list[dict]:
 # parameter names), and prune anything older than a few releases: this is a corrective for
 # stale memory, not a changelog.
 INTERFACE_CHANGES = [
+    ("2026-08-31", "add_note gained `entry=True` and `descriptor=...` — pass the file's name "
+                   "as STRUCTURE, not inside `title`. `title` is now the H1 only. A name that "
+                   "does not fit its folder is refused BEFORE the write."),
     ("2026-08-31", "second_brain_overview is NEW — this tool. Call it before any write; "
                    "it is generated from the live registry, so it cannot be stale."),
     ("2026-08-30", "add_note gained `subpath` (nest under projects/ or archive/) and "
@@ -927,18 +1016,24 @@ async def second_brain_overview() -> str:
   area never ends, so both refuse.
 
   ENTRY NOTES. Every folder holding material carries a note named after it, at every level:
-  projects/algebra/algebra.md, projects/algebra/algebra-chapter-1/algebra-chapter-1.md.
-  Obsidian resolves [[wikilinks]] by NAME, so this is what keeps a link working after the
-  folder moves to archive/. A child is named after its parent: {{parent}}-{{descriptor}}, for a
-  nested FOLDER and for a plain file alike (algebra-progress.md). That prefix is not decoration
-  — it is what keeps the name unique, since the folder name becomes a note name.
+  projects/algebra-1/algebra-1.md,
+  projects/algebra-1/algebra-1--chapter-1/algebra-1--chapter-1.md. Obsidian resolves
+  [[wikilinks]] by NAME, so this is what keeps a link working after the folder moves to
+  archive/. Create one with add_note(..., subpath=<the folder>, entry=True) — the filename
+  comes from the folder, so the title is free to be a readable heading.
 
-  NAMING. `title` becomes a kebab-case filename, so name folders as the title slugifies:
-  "Chapter 1" -> chapter-1.md -> the folder must be `chapter-1`, never `chapter1`.
+  NAMING A FILE IN A FOLDER. Pass structure as structure, never in the title. entry=True names
+  the file after its folder; descriptor="worked-solutions" names one inside it, giving
+  {{folder}}--{{descriptor}}.md. The `--` join is added AFTER slugification, which is why it
+  survives — no title can produce a double dash, because _slugify collapses any run of
+  non-alphanumerics to one hyphen. A name that fits neither shape is REFUSED before the write.
+
+  NAMING A FLAT NOTE. With no subpath, `title` still becomes the kebab-case filename:
+  "Vector Search" -> vector-search.md.
 
   UNIQUENESS. Note filenames must be unique across the whole vault — the pre-commit hook
-  REFUSES a duplicate, so a colliding title fails the write. The parent-prefix rule above is
-  how you satisfy it: title "Algebra Chapter 1", never a bare "Chapter 1".
+  REFUSES a duplicate. entry/descriptor are how you satisfy it: they scope the name to its
+  folder, so two projects can each have a chapter 1 without colliding.
 
   WHAT IS NOT A NOTE. Markdown that is material rather than a note takes `embed=False`
   (frontmatter `embed: false`): kept in the vault, never embedded, never searchable. A file

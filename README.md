@@ -142,9 +142,10 @@ references is unreachable.
 **Note filenames must be unique across the vault.** The pre-commit hook refuses a duplicate.
 Obsidian resolves `[[wikilinks]]` by name, so two `chapter-1.md` files make every link to that
 name ambiguous — it picks one and the other becomes unreachable. Name a child after its parent,
-`{parent}-{descriptor}`, for a nested folder and a plain file alike —
-`projects/algebra/algebra-chapter-1/algebra-chapter-1.md`, `algebra-progress.md` — and name
-folders as their note title slugifies.
+`{folder}--{descriptor}`, for a nested folder and a plain file alike:
+`projects/algebra-1/algebra-1--chapter-1/algebra-1--chapter-1.md`. From Claude Desktop, pass
+that structure to `add_note` as `entry=True` or `descriptor=...` rather than writing it into the
+title — the title is the heading, and the slugifier cannot produce a `--`.
 
 **Keep a file out of the brain** — put `embed: false` in its frontmatter:
 
@@ -170,7 +171,7 @@ opposite default would leave a note you forgot to mark **silently** unsearchable
 Inside a project folder the convention is `projects/<project>/<project>.md` for the entry
 note — it repeats the folder name because Obsidian resolves `[[wikilinks]]` by name, so
 `[[algebra]]` keeps working after the folder moves to `archive/` — and
-`{parent}-{descriptor}` for everything else, folders included. The prefix is what keeps the
+`{folder}--{descriptor}` for everything else, folders included. The prefix is what keeps the
 name unique once folders nest.
 
 **Define a term (the glossary — PARA(G))** — for a **controlled vocabulary**, this
