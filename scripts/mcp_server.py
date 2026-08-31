@@ -408,33 +408,48 @@ def _slugify(title: str) -> str:
 
 # A subfolder under a PARA root: one or more lowercase kebab-case segments, no leading dot.
 # An allow-list, like _slugify: `..` cannot match (a segment must start [a-z0-9]), so no
-# traversal payload survives it. Kept deliberately strict — the folder name becomes the
-# prefix of every file inside it, and the convention is lowercase kebab-case.
-_FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+# traversal payload survives it — and neither does an absolute path, a leading or trailing
+# slash, or an empty segment, since every segment must begin with an alphanumeric. Kept
+# deliberately strict: the folder name becomes the prefix of every file inside it, and the
+# convention is lowercase kebab-case.
+_SUBPATH_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+
+# Where nesting is allowed. `projects/` because a project is goal-bound and ends, so its note
+# and its material want to archive or delete as ONE unit — that motive is the whole reason to
+# nest. `archive/` because it is where a finished project folder lands, and a destination you
+# cannot write to is not a destination. `resources/` is filed by topic and `areas/` does not
+# end, so neither has the motive; nesting there buries notes for no gain.
+SUBPATH_ROOTS = ("projects", "archive")
 
 
-def _safe_folder(para_root: str, folder: str) -> Path:
-    """``vault/<para_root>/<folder>`` as a directory, refusing anything that could escape it.
+def _safe_subpath(para_root: str, subpath: str) -> Path:
+    """``vault/<para_root>/<subpath>`` as a directory, refusing anything that could escape it.
 
     PARA roots are walked **recursively**, so a note in a subfolder is embedded, searched,
     tag-linted and encrypted exactly like one at the root. This is what makes colocation work:
     a project's note and its material live in `projects/<project>/` and archive as one unit.
 
-    Refuses loudly rather than silently rewriting a bad folder into a good one — an assistant
+    Refuses loudly rather than silently rewriting a bad path into a good one — an assistant
     that gets a clear error can correct itself, whereas a silently relocated file is found
     later, somewhere else, by a human.
     """
-    if not folder:
+    if not subpath:
         return VAULT / para_root
-    if not _FOLDER_RE.match(folder):
-        raise ValueError(f"folder must be lowercase kebab-case path segments "
-                         f"(e.g. 'algebra' or 'algebra/practice'), got {folder!r}")
-    dest = VAULT / para_root / folder
-    # Defense in depth: _FOLDER_RE already makes an escape impossible, so this can only fire
+    if para_root not in SUBPATH_ROOTS:
+        raise ValueError(
+            f"subpath is only allowed under {'/'.join(SUBPATH_ROOTS)}, not {para_root!r}. A "
+            f"project folder exists so its note and material archive as one unit; a resource "
+            f"is filed by topic and an area never ends, so neither has that motive. File this "
+            f"at the root of vault/{para_root}/ instead.")
+    if not _SUBPATH_RE.match(subpath):
+        raise ValueError(f"subpath must be lowercase kebab-case path segments "
+                         f"(e.g. 'algebra' or 'algebra/chapter1'), got {subpath!r}")
+    dest = VAULT / para_root / subpath
+    # Defense in depth: _SUBPATH_RE already makes an escape impossible, so this can only fire
     # if someone loosens it. Cheap to keep on the one path that writes to disk.
     root = (VAULT / para_root).resolve()
     if root not in dest.resolve().parents and dest.resolve() != root:
-        raise ValueError(f"refusing to write outside vault/{para_root}: {folder!r}")
+        raise ValueError(f"refusing to write outside vault/{para_root}: {subpath!r}")
     return dest
 
 
@@ -508,7 +523,7 @@ def _push(branch: str) -> str:
 
 @mcp.tool(structured_output=False)
 def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None,
-             folder: str = "", embed: bool = True) -> str:
+             subpath: str = "", embed: bool = True) -> str:
     """Create a NEW note in the brain, then commit and push it. The only writing tool.
 
     Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
@@ -529,13 +544,18 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     embedded as ONE vector, and box-drawing characters cost about a token each, so unfenced art
     both dilutes the vector and can overflow the embedder's context outright.
 
-    `folder` (optional) is a subfolder **under** the PARA root, lowercase kebab-case, e.g.
-    `algebra` -> `vault/projects/algebra/<slug>.md`. PARA roots are walked recursively, so a
-    note in a subfolder is embedded, searched and tag-linted exactly like one at the root. Use
-    it to keep a project's note and its material together, so the whole folder archives as one
-    unit; the convention is that the entry note repeats the folder name
-    (`projects/algebra/algebra.md`, because Obsidian resolves `[[wikilinks]]` by name) and
-    everything else is `{folder}--{descriptor}.md`.
+    `subpath` (optional) nests the note **under** the PARA root, lowercase kebab-case, e.g.
+    `algebra/chapter1` -> `vault/projects/algebra/chapter1/<slug>.md`. Allowed under
+    **projects/ and archive/ only** — a project is goal-bound and ends, so its note and its
+    material want to archive as one unit; a resource is filed by topic and an area never ends,
+    so neither has that motive and both refuse. PARA roots are walked recursively, so a nested
+    note is embedded, searched and tag-linted exactly like one at the root.
+
+    **Every folder that holds material carries an entry note named after it**, at every level:
+    `projects/algebra/algebra.md`, and `projects/algebra/chapter1/chapter1.md`. It looks
+    redundant and it is the form that works — Obsidian resolves `[[wikilinks]]` by name, so the
+    link survives the move to `archive/`. Everything else in a folder is
+    `{folder}--{descriptor}.md`. Use `add_asset` for files that are not notes.
 
     `embed=False` writes `embed: false` into the frontmatter: the file lands in the vault but is
     never embedded, cached, or returned by search — for material that belongs *beside* a note
@@ -554,7 +574,7 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     if not slug:
         raise ValueError(f"title {title!r} has no usable characters for a filename")
 
-    dest_dir = _safe_folder(para_root, folder)
+    dest_dir = _safe_subpath(para_root, subpath)
     path = dest_dir / f"{slug}.md"
     # Defense in depth: _slugify already makes an escape impossible, so this can only fire if
     # someone loosens it. Cheap to keep, and this is the one tool that writes to disk.
@@ -647,7 +667,130 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     # Advisory, not a failure: the note is really saved. A near-miss tag is worth flagging so
     # the vocabulary does not silently split, but it never blocks the write.
     tag_hint = ("\nTAG HINT: " + "; ".join(tag_warnings)) if tag_warnings else ""
-    return f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}{tag_hint}"
+    # Every folder that holds material carries an entry note named after it, at every level.
+    # Advisory rather than enforced (a one-note folder is a legitimate exception, and a rule
+    # that refuses would train people to fight the tool) — but silent would be worse, because
+    # the convention exists so `[[folder-name]]` keeps resolving after a move to archive/, and
+    # nothing else would ever mention it. Note the slug rule bites here: the folder must be
+    # named as the entry note's title slugifies, so `chapter-1/`, not `chapter1/`.
+    folder_hint = ""
+    if subpath:
+        leaf = subpath.rsplit("/", 1)[-1]
+        if not (dest_dir / f"{leaf}.md").exists():
+            folder_hint = (f"\nFOLDER HINT: vault/{para_root}/{subpath} has no entry note. The "
+                           f"convention is that every folder carries a note named after it — "
+                           f"add_note(title=\"{leaf.replace('-', ' ').title()}\", "
+                           f"para_root=\"{para_root}\", subpath=\"{subpath}\") would create "
+                           f"{leaf}.md — so [[{leaf}]] keeps resolving after the folder moves "
+                           f"to archive/. Name folders as the title slugifies.")
+    return (f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
+            f"{tag_hint}{folder_hint}")
+
+
+# Filenames an asset may use. Verbatim — unlike a note, nothing is slugified, because the name
+# is what the note's `![alt](name.svg)` reference has to match. So it is validated instead: one
+# path segment, no separators, no leading dot, and an extension. `..` cannot match (the name
+# must start alphanumeric), and neither can a nested path.
+_ASSET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]+$")
+
+
+@mcp.tool(structured_output=False)
+def add_asset(para_root: str, subpath: str, filename: str, content: str,
+              encoding: str = "text") -> str:
+    """Add a NON-note file beside a note — a diagram, an image, a data file. A write tool.
+
+    An asset is **material belonging to a note**, not a note of its own: a `.svg` the note
+    displays, a `.csv` it discusses. It is stored, committed and pushed, and is **never
+    embedded or searchable** — that is not configurable. Only Markdown is ever embedded, so a
+    file's meaning reaches search through the note that references it, not on its own. (SVG is
+    XML: markup, not meaning. Embedding it would pollute the note's vector with tag soup.)
+
+    `filename` is used **verbatim** — no slugifying, no rewriting — because the note's
+    reference has to match it exactly. It must be a bare filename with an extension and no
+    path separators; put the location in `subpath`.
+
+    `encoding` is `text` (the default; `content` is written as UTF-8) or `base64` (for binary
+    — PNG, JPEG — `content` is decoded first).
+
+    **A note must already exist in the target folder.** An asset with no note is unreachable:
+    nothing embeds it, nothing links it, and search cannot return it, so it is invisible the
+    moment you forget it is there. Call `add_note` first, then this.
+
+    To display it, use a **relative markdown image link** in the note:
+
+        ![a tiling of the plane](tile-pattern.svg)
+
+    Not `![[tile-pattern.svg]]`. Both render in Obsidian, but the relative form also renders on
+    GitHub and resolves by *path* rather than by filename — so it does not depend on the
+    filename being unique across the whole vault.
+
+    Refuses to overwrite. Returns a report of what landed, including whether the push succeeded.
+    """
+    if para_root not in PARA_ROOTS:
+        raise ValueError(f"para_root must be one of {PARA_ROOTS}, got {para_root!r}")
+    if not _ASSET_NAME_RE.match(filename):
+        raise ValueError(
+            f"filename must be a bare name with an extension and no path separators "
+            f"(e.g. 'tile-pattern.svg'), got {filename!r}. Put the location in subpath.")
+    if filename.endswith(".md"):
+        raise ValueError("a .md file is a note, not an asset — use add_note, so it gets "
+                         "frontmatter, an H1, and a place in the search index")
+    if encoding not in ("text", "base64"):
+        raise ValueError(f"encoding must be 'text' or 'base64', got {encoding!r}")
+
+    # An encrypted brain git-ignores the whole vault and encrypts only `*.md`, so an asset
+    # would be committed in NO form at all — neither in the clear nor as a blob. Refuse rather
+    # than write it: reporting "committed and pushed" while pushing nothing is exactly the
+    # silent failure this brain has had to fix three times already. Tracked as task #49.
+    if _encryption_on():
+        raise ValueError(
+            "this brain is encrypted, and encryption currently covers Markdown notes only — "
+            "an asset would be git-ignored and never committed in any form, so add_asset "
+            "refuses rather than pretend it saved. Known gap; not a problem with your file.")
+
+    dest_dir = _safe_subpath(para_root, subpath)
+    if not dest_dir.is_dir() or not any(dest_dir.glob("*.md")):
+        raise ValueError(
+            f"no note in vault/{para_root}/{subpath} — an asset belongs to a note, and one "
+            f"with nothing referencing it is unreachable: nothing embeds it, nothing links it, "
+            f"and search cannot return it. Create the note first with add_note.")
+
+    path = dest_dir / filename
+    # Defense in depth: _ASSET_NAME_RE already makes an escape impossible, so this can only
+    # fire if someone loosens it. Cheap to keep on a path that writes to disk.
+    if path.resolve().parent != dest_dir.resolve():
+        raise ValueError(f"refusing to write outside vault/{para_root}: {filename!r}")
+    if path.exists():
+        raise ValueError(f"asset already exists: {path.relative_to(BRAIN)} — add_asset creates "
+                         "new files only; edit or delete the existing one yourself")
+
+    if encoding == "base64":
+        import base64 as _b64
+        try:
+            path.write_bytes(_b64.b64decode(content, validate=True))
+        except Exception as exc:
+            raise ValueError(f"content is not valid base64: {exc}") from exc
+    else:
+        path.write_text(content, encoding="utf-8")
+
+    rel = str(path.relative_to(BRAIN))
+    try:
+        # Stage and commit ONLY this file, for the same reason add_note does: the user's
+        # in-progress work must never be swept into a commit an agent authored.
+        _git("add", "--", rel)
+        _git("commit", "-m", f"asset: add {filename}", "--", rel)
+        _git("add", "--", rel, check=False)
+    except subprocess.CalledProcessError as exc:
+        path.unlink(missing_ok=True)  # leave no half-written asset behind
+        raise ValueError(f"git commit failed, asset not created: {_why(exc)}") from exc
+
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    pushed = _push(branch)
+    head = (f"PARTIAL SUCCESS — ACTION NEEDED (tell the user this, do not just say 'saved'): "
+            f"{pushed}\n" if pushed.startswith(("NOT PUSHED", "not pushed")) else "")
+    return (f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n"
+            f"not embedded (assets never are) — reference it from the note with "
+            f"![description]({filename})")
 
 
 @mcp.tool(structured_output=False)
@@ -884,7 +1027,7 @@ def list_inbox_pdfs(folder: str = "") -> list[dict]:
 
 
 @mcp.tool(structured_output=False)
-def add_pdf(pdf_path: str, para_root: str, folder: str = "") -> str:
+def add_pdf(pdf_path: str, para_root: str, subpath: str = "") -> str:
     """Ingest a PDF: move it into ``vault/<para_root>/``, then chunk, embed, and index it.
 
     ``pdf_path`` must be a file inside one of the configured source folders (see
@@ -893,10 +1036,10 @@ def add_pdf(pdf_path: str, para_root: str, folder: str = "") -> str:
     dependency (``pip install -r requirements-pdf.txt``). Does **not** commit or push — the PDF and
     its index are git-ignored.
 
-    ``folder`` (optional) is a subfolder under the PARA root, lowercase kebab-case, e.g.
-    ``algebra`` -> ``vault/projects/algebra/``. Use it to put a PDF beside the note it belongs
-    to — a project's paperwork trail living with its project note, so the folder archives as
-    one unit. That colocation is the case a flat PARA root cannot express.
+    ``subpath`` (optional) nests the PDF under the PARA root, lowercase kebab-case, e.g.
+    ``algebra/chapter1`` -> ``vault/projects/algebra/chapter1/``. Allowed under projects/ and
+    archive/ only. Use it to put a PDF beside the note it belongs to — a project's paperwork
+    trail living with its project note, so the folder archives as one unit.
     """
     p = Path(pdf_path)
     if not p.is_absolute():
@@ -905,7 +1048,8 @@ def add_pdf(pdf_path: str, para_root: str, folder: str = "") -> str:
         raise ValueError(f"refusing to ingest a file outside the configured source folders: "
                          f"{pdf_path} (call list_inbox_pdfs to see them)")
     try:
-        s = _add_pdf.add_pdf(p, para_root, folder=folder)
+        _safe_subpath(para_root, subpath)   # one rule for where nesting is allowed
+        s = _add_pdf.add_pdf(p, para_root, subpath=subpath)
     except SystemExit as exc:  # pypdf missing surfaces as SystemExit; make it a normal tool error
         raise ValueError(str(exc)) from exc
     return (f"ingested {s['source_file']} — {s['pages']} page(s), {s['chunks']} chunk(s) now "

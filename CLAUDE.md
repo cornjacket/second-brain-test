@@ -72,6 +72,28 @@ is what happened; the *lesson* you drew from it is what transfers.
   already-embedded note **retracts** it — sidecar, vector and search row all go; deleting
   the key puts it back on the next commit. `doctor.py` reports the excluded count, so an
   exclusion is never invisible.
+- **Nest a project's work in a subfolder, and give every folder an entry note.** `subpath`
+  (MCP `add_note`/`add_pdf`) nests under `projects/` or `archive/` **only** — a project is
+  goal-bound and ends, so its note and material archive as one unit; a resource is filed by
+  topic and an area never ends, so both refuse. **Every folder that holds material carries a
+  note named after it, at every level** — `projects/algebra/algebra.md`,
+  `projects/algebra/chapter-1/chapter-1.md`. It looks redundant and it is the form that works:
+  Obsidian resolves `[[wikilinks]]` by **name**, so the link survives the move to `archive/`.
+  Name folders as the title slugifies (`chapter-1`, not `chapter1`), or the entry note cannot
+  match its folder. Everything else in a folder is `{folder}--{descriptor}.md`.
+- **Note filenames must be unique across the whole vault** — the pre-commit hook refuses a
+  duplicate. Obsidian resolves `[[wikilinks]]` by name, so two `chapter-1.md` files make every
+  link to that name ambiguous and silently misrouted. This used to hold by accident (a flat
+  root, and a directory cannot hold two files of one name); subfolders removed the accident, so
+  now a check enforces it.
+- **Files that are not notes go in with `add_asset`, never `add_note`.** A diagram, an image, a
+  data file — stored and committed beside the note, **never embedded**. Only Markdown is ever
+  embedded, so an asset's meaning reaches search through the note that references it. Display
+  it with a **relative markdown link**, `![a tiling of the plane](tile-pattern.svg)`, not
+  `![[tile-pattern.svg]]`: both render in Obsidian, but the relative form also renders on
+  GitHub and resolves by *path*, so it does not depend on the filename being unique. The
+  filename is stripped from the embed input either way; the alt text is kept, so write a real
+  description rather than `![](...)`.
 - **Fence diagrams and ASCII art in a no-embed block.** Wrap any decorative region
   between `<!-- second-brain:no-embed:begin -->` and `<!-- second-brain:no-embed:end -->`:
   it stays in the file (Obsidian hides the markers) but never reaches the embedder. A

@@ -124,6 +124,26 @@ PARA roots are walked **recursively**, so `vault/projects/algebra/algebra.md` is
 exactly like one at the root. That's what makes a project folder work: keep a project's
 note and its material together and the whole thing archives — or deletes — as one unit.
 
+**Add a file that isn't a note** — a diagram, an image, a data table — put it beside the note
+that uses it and reference it with a relative link:
+
+```markdown
+![a tiling of the plane](tile-pattern.svg)
+```
+
+Assets are committed but **never embedded**: only Markdown is. The picture reaches search
+through the note that describes it, which is why the alt text is worth writing — it is kept in
+the note's embedding while the filename is stripped out. Prefer the relative form above to
+Obsidian's `![[tile-pattern.svg]]`: both display in Obsidian, but the relative one also renders
+on GitHub and resolves by *path* rather than by filename. From Claude Desktop the tool is
+`add_asset`; it requires a note to already exist in the folder, because an asset nothing
+references is unreachable.
+
+**Note filenames must be unique across the vault.** The pre-commit hook refuses a duplicate.
+Obsidian resolves `[[wikilinks]]` by name, so two `chapter-1.md` files make every link to that
+name ambiguous — it picks one and the other becomes unreachable. Name folders as the note title
+slugifies (`chapter-1/chapter-1.md`), and everything else `{folder}--{descriptor}.md`.
+
 **Keep a file out of the brain** — put `embed: false` in its frontmatter:
 
 ```yaml
@@ -442,7 +462,8 @@ the skill exactly. It exposes:
 | `get_note_template(variant)` | A note template — `note` (default) or `not-a-note`, the `embed: false` variant for material that isn't a note. |
 | `list_glossary_terms()` | Every defined glossary term + aliases. |
 | `lookup_glossary_term(term)` | One term's definition, by exact key (the glossary is deliberately kept out of semantic search). |
-| **`add_note(title, para_root, body, tags, folder, embed)`** | **Create a note — then commit and push it.** `folder` files it in a subfolder; `embed=False` writes the opt-out key. |
+| **`add_note(title, para_root, body, tags, subpath, embed)`** | **Create a note — then commit and push it.** `subpath` nests it (projects/archive only); `embed=False` writes the opt-out key. |
+| **`add_asset(para_root, subpath, filename, content, encoding)`** | **Add a non-note file beside a note** — diagram, image, data. Committed, never embedded. |
 
 **`add_note` writes to your repo.** It creates the note, `git commit`s it (which is what
 *embeds* it — the pre-commit hook — so it's searchable at once), and pushes to your remote

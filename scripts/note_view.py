@@ -87,6 +87,42 @@ def strip_wikilinks(body: str) -> str:
     return _WIKILINK.sub(lambda m: (m.group(2) or m.group(1)).strip(), body)
 
 
+# A link whose target names a file that is not a note: `![alt](tile.svg)`, `![[tile.svg]]`,
+# `[the data](rows.csv)`. The extension test is what separates an ASSET reference from a link
+# to another note — `.md` targets and URLs are left to the ordinary wikilink handling.
+_MD_ASSET_LINK = re.compile(r"!?\[([^\]]*)\]\(([^)\s]+)\)")
+_WIKI_ASSET_LINK = re.compile(r"!?\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]")
+
+
+def _is_asset_target(target: str) -> bool:
+    """Does this link target name a non-Markdown file living in the vault?"""
+    if "://" in target or target.startswith("#"):
+        return False                       # a URL or an in-note anchor, not an asset
+    name = target.split("/")[-1].split("#")[0]
+    stem, dot, ext = name.rpartition(".")
+    return bool(dot and stem and ext.isalnum() and ext.lower() != "md")
+
+
+def strip_asset_links(body: str) -> str:
+    """Drop asset *filenames* from the embed input, keeping any human description.
+
+    A note displays its material with `![a tiling of the plane](tile-pattern.svg)`. The
+    filename is a **path**, not meaning — the same category as the `[[ ]]` brackets this module
+    already strips, and the reason assets are never embedded in the first place. Left in, every
+    note that shows a diagram gets `tile-pattern.svg` in its vector, and notes come to resemble
+    each other by how their files are named rather than by what they say.
+
+    The alt text is kept, deliberately: a human wrote it to describe the picture, so it is the
+    one part of the reference that carries meaning — often the only description of the diagram
+    the embedder will ever see.
+    """
+    body = _MD_ASSET_LINK.sub(
+        lambda m: m.group(1) if _is_asset_target(m.group(2)) else m.group(0), body)
+    return _WIKI_ASSET_LINK.sub(
+        lambda m: ((m.group(2) or "").strip() if _is_asset_target(m.group(1)) else m.group(0)),
+        body)
+
+
 def strip_no_embed(body: str) -> str:
     """Remove every ``no-embed`` block — the region a human marked as decorative.
 
@@ -151,6 +187,9 @@ def canonical_body(text: str) -> str:
     body = _strip_frontmatter(text)
     body = body.replace("\r\n", "\n").replace("\r", "\n")
     body = strip_no_embed(body)
+    # Before strip_wikilinks: it would turn `![[tile.svg]]` into the bare text `tile.svg`,
+    # which is the filename this step exists to remove.
+    body = strip_asset_links(body)
     body = strip_wikilinks(body)
     body = body.strip("\n")
     return body + "\n" if body else ""
