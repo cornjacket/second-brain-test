@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -102,21 +103,37 @@ def list_pdfs(folder, *, offset: int = 0, limit: int | None = None) -> list[Path
 
 # --- ingest ------------------------------------------------------------------------------
 
-def add_pdf(pdf_path, para_root: str, *, move: bool | None = None) -> dict:
-    """Ingest one PDF into ``vault/<para_root>/`` and load its chunks into the cache.
+# A subfolder under a PARA root: lowercase kebab-case segments. An allow-list, so `..` cannot
+# match (a segment must start [a-z0-9]) and no traversal payload survives. Deliberately the
+# same shape the MCP write path enforces — a small rule stated twice, in the two places that
+# turn caller input into a path, rather than a shared helper that couples the note writer to
+# the PDF module.
+_FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+
+
+def add_pdf(pdf_path, para_root: str, *, folder: str = "", move: bool | None = None) -> dict:
+    """Ingest one PDF into ``vault/<para_root>/[<folder>/]`` and load its chunks into the cache.
+
+    ``folder`` is an optional subfolder under the PARA root, so a PDF can sit beside the note
+    it belongs to — the colocation case a flat root cannot express (a project's paperwork trail
+    living with its project note, archiving as one unit).
 
     Returns a summary ``{source_file, dest, pages, chunks, moved}``. Refuses an unknown PARA
-    root or an existing destination (never silently overwrites). Does not commit or push.
+    root, a malformed folder, or an existing destination (never silently overwrites). Does not
+    commit or push.
     """
     pdf_path = Path(pdf_path)
     if para_root not in PARA_ROOTS:
         raise ValueError(f"unknown PARA root {para_root!r}; expected one of {PARA_ROOTS}")
+    if folder and not _FOLDER_RE.match(folder):
+        raise ValueError(f"folder must be lowercase kebab-case path segments "
+                         f"(e.g. 'algebra' or 'algebra/practice'), got {folder!r}")
     if not pdf_path.is_file():
         raise ValueError(f"no such PDF: {pdf_path}")
     if pdf_path.suffix.lower() != ".pdf":
         raise ValueError(f"not a .pdf: {pdf_path.name}")
 
-    dest_dir = VAULT_DIR / para_root
+    dest_dir = VAULT_DIR / para_root / folder if folder else VAULT_DIR / para_root
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / pdf_path.name
     if dest.exists():
@@ -161,6 +178,8 @@ def main(argv=None) -> int:
     p_add = sub.add_parser("add", help="ingest a PDF into vault/<para_root>/")
     p_add.add_argument("pdf")
     p_add.add_argument("para_root", choices=PARA_ROOTS)
+    p_add.add_argument("--folder", default="",
+                       help="subfolder under the PARA root, e.g. 'algebra' (colocate with a note)")
     p_add.add_argument("--copy", action="store_true", help="copy instead of move")
 
     args = ap.parse_args(argv)
@@ -190,7 +209,7 @@ def main(argv=None) -> int:
                 print(f"{i}. {p.name}")
         return 0
 
-    summary = add_pdf(args.pdf, args.para_root, move=not args.copy)
+    summary = add_pdf(args.pdf, args.para_root, folder=args.folder, move=not args.copy)
     print(f"ingested {summary['source_file']} — {summary['pages']} page(s), "
           f"{summary['chunks']} chunk(s) -> cache "
           f"({'moved' if summary['moved'] else 'copied'})")

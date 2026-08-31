@@ -56,6 +56,18 @@ is what happened; the *lesson* you drew from it is what transfers.
   Link related notes with `[[wikilinks]]`. Start from the annotated example at
   [`vault/templates/new-note.md`](vault/templates/new-note.md) — copy it into the
   right PARA root and fill it in (the template dir isn't indexed).
+- **Not every Markdown file under a PARA root has to be a note.** Frontmatter
+  `embed: false` keeps a file out of the brain — never embedded, never cached, never
+  returned by search — so project scratch, a colocated README or a draft can live beside
+  the note it belongs to. Start from
+  [`vault/templates/not-a-note.md`](vault/templates/not-a-note.md). Embedding is the
+  **default** and the parser **fails open** (a missing key, a typo, or an unreadable
+  value all mean *embed*): a file you forgot to mark turns up in a search result, where
+  the mistake is obvious and one line fixes it, whereas an opt-in scheme would leave a
+  note you forgot to mark **silently** unsearchable. Adding the key to an
+  already-embedded note **retracts** it — sidecar, vector and search row all go; deleting
+  the key puts it back on the next commit. `doctor.py` reports the excluded count, so an
+  exclusion is never invisible.
 - **Fence diagrams and ASCII art in a no-embed block.** Wrap any decorative region
   between `<!-- second-brain:no-embed:begin -->` and `<!-- second-brain:no-embed:end -->`:
   it stays in the file (Obsidian hides the markers) but never reaches the embedder. A

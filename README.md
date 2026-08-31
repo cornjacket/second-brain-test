@@ -120,6 +120,37 @@ link notes with `[[wikilinks]]`. On commit the **pre-commit** hook embeds the no
 and the **post-commit** hook refreshes the cache — so it's searchable right away,
 no manual step.
 
+PARA roots are walked **recursively**, so `vault/projects/algebra/algebra.md` is a note
+exactly like one at the root. That's what makes a project folder work: keep a project's
+note and its material together and the whole thing archives — or deletes — as one unit.
+
+**Keep a file out of the brain** — put `embed: false` in its frontmatter:
+
+```yaml
+---
+embed: false
+---
+```
+
+That file stays in the vault but is never embedded, never enters the cache, and never
+comes back from a search — for material that belongs *beside* a note rather than *as* one
+(project scratch, a colocated README, a draft). Start from
+[`vault/templates/not-a-note.md`](vault/templates/not-a-note.md). Add the key to a note
+that's already embedded and it's **retracted** — sidecar, vector and search row all go;
+delete the key and the next commit puts it back. `scripts/doctor.py` reports how many
+files are excluded, so an exclusion is never invisible.
+
+Embedding is the **default** and the parser **fails open** — a missing key, a typo, or a
+value it can't read all mean *embed*. That's deliberate: a file you forgot to mark turns
+up in a search result, where the mistake is obvious and one line fixes it, whereas the
+opposite default would leave a note you forgot to mark **silently** unsearchable.
+
+Inside a project folder the convention is `projects/<project>/<project>.md` for the entry
+note — it repeats the folder name because Obsidian resolves `[[wikilinks]]` by name, so
+`[[algebra]]` keeps working after the folder moves to `archive/` — and
+`{folder}--{descriptor}.md` for everything else. Recommended, never enforced; no script
+checks it.
+
 **Define a term (the glossary — PARA(G))** — for a **controlled vocabulary**, this
 brain adds a **G**lossary alongside PARA (Projects, Areas, Resources, Archive):
 `vault/glossary/` holds one atomic note per reused/non-obvious term. It's a note
@@ -233,7 +264,12 @@ Ingest from the command line — pick a source folder, then a file, then a PARA 
 python3 scripts/add_pdf.py list                          # your configured source folders
 python3 scripts/add_pdf.py list vault/inbox              # the PDFs in one folder
 python3 scripts/add_pdf.py add vault/inbox/paper.pdf resources
+python3 scripts/add_pdf.py add vault/inbox/test-1.pdf projects --folder algebra
 ```
+
+`--folder` puts the PDF in a subfolder of the PARA root, beside the note it belongs to —
+a project's paperwork trail living with its project note. The MCP `add_pdf` tool takes the
+same `folder` argument.
 
 Drop PDFs into `vault/inbox` — the one source folder configured out of the box.
 
@@ -403,10 +439,10 @@ the skill exactly. It exposes:
 | `search_second_brain(query, k)` | Find notes by meaning — absolute paths + relevance. |
 | `get_note(source_file)` | Read one note's Markdown (refuses any path outside `vault/`). |
 | `list_vault(para_root)` | Browse the PARA structure — what's already filed, and where. |
-| `get_note_template()` | This brain's note template (`vault/templates/new-note.md`). |
+| `get_note_template(variant)` | A note template — `note` (default) or `not-a-note`, the `embed: false` variant for material that isn't a note. |
 | `list_glossary_terms()` | Every defined glossary term + aliases. |
 | `lookup_glossary_term(term)` | One term's definition, by exact key (the glossary is deliberately kept out of semantic search). |
-| **`add_note(title, para_root, body, tags)`** | **Create a note — then commit and push it.** |
+| **`add_note(title, para_root, body, tags, folder, embed)`** | **Create a note — then commit and push it.** `folder` files it in a subfolder; `embed=False` writes the opt-out key. |
 
 **`add_note` writes to your repo.** It creates the note, `git commit`s it (which is what
 *embeds* it — the pre-commit hook — so it's searchable at once), and pushes to your remote
@@ -544,7 +580,7 @@ works: ask to add a PDF and `add_pdf_guided` prompts you through folder → PDF 
 ├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill, mcp_server, features, glossary_new/scan/autolink_staged
 ├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
-│   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope)
+│   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope; walked recursively)
 │   ├── glossary/          # controlled-vocabulary terms — NON-PARA, not embedded (the G in PARA(G))
 │   └── …/.<note>.embed.json   # per-note vectors — DERIVED, git-ignored
 ├── tests/fixtures/vault/  # committed test-backend fixtures for self_test

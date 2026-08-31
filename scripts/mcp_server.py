@@ -78,7 +78,14 @@ BRAIN = Path(__file__).resolve().parents[1]
 VAULT = BRAIN / "vault"
 GLOSSARY = VAULT / "glossary"
 DB_PATH = BRAIN / "data" / "brain.db"
-TEMPLATE = VAULT / "templates" / "new-note.md"
+# The vault's note templates, by variant. `note` is the default; `not-a-note` carries the
+# `embed: false` opt-out for Markdown that lives inside a PARA root WITHOUT being a note.
+# Serving only the first would lock an MCP client out of the opt-out entirely — every note
+# an assistant creates would embed, and it would fail *silently* (a plausible file appears).
+TEMPLATES = {
+    "note": VAULT / "templates" / "new-note.md",
+    "not-a-note": VAULT / "templates" / "not-a-note.md",
+}
 PARA_ROOTS = ("projects", "areas", "resources", "archive")
 
 mcp = FastMCP("second-brain")
@@ -399,6 +406,38 @@ def _slugify(title: str) -> str:
     return slug
 
 
+# A subfolder under a PARA root: one or more lowercase kebab-case segments, no leading dot.
+# An allow-list, like _slugify: `..` cannot match (a segment must start [a-z0-9]), so no
+# traversal payload survives it. Kept deliberately strict — the folder name becomes the
+# prefix of every file inside it, and the convention is lowercase kebab-case.
+_FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
+
+
+def _safe_folder(para_root: str, folder: str) -> Path:
+    """``vault/<para_root>/<folder>`` as a directory, refusing anything that could escape it.
+
+    PARA roots are walked **recursively**, so a note in a subfolder is embedded, searched,
+    tag-linted and encrypted exactly like one at the root. This is what makes colocation work:
+    a project's note and its material live in `projects/<project>/` and archive as one unit.
+
+    Refuses loudly rather than silently rewriting a bad folder into a good one — an assistant
+    that gets a clear error can correct itself, whereas a silently relocated file is found
+    later, somewhere else, by a human.
+    """
+    if not folder:
+        return VAULT / para_root
+    if not _FOLDER_RE.match(folder):
+        raise ValueError(f"folder must be lowercase kebab-case path segments "
+                         f"(e.g. 'algebra' or 'algebra/practice'), got {folder!r}")
+    dest = VAULT / para_root / folder
+    # Defense in depth: _FOLDER_RE already makes an escape impossible, so this can only fire
+    # if someone loosens it. Cheap to keep on the one path that writes to disk.
+    root = (VAULT / para_root).resolve()
+    if root not in dest.resolve().parents and dest.resolve() != root:
+        raise ValueError(f"refusing to write outside vault/{para_root}: {folder!r}")
+    return dest
+
+
 def _encryption_on() -> bool:
     """Is this brain committing encrypted blobs instead of notes?
 
@@ -468,7 +507,8 @@ def _push(branch: str) -> str:
 
 
 @mcp.tool(structured_output=False)
-def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None) -> str:
+def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None,
+             folder: str = "", embed: bool = True) -> str:
     """Create a NEW note in the brain, then commit and push it. The only writing tool.
 
     Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
@@ -489,6 +529,21 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     embedded as ONE vector, and box-drawing characters cost about a token each, so unfenced art
     both dilutes the vector and can overflow the embedder's context outright.
 
+    `folder` (optional) is a subfolder **under** the PARA root, lowercase kebab-case, e.g.
+    `algebra` -> `vault/projects/algebra/<slug>.md`. PARA roots are walked recursively, so a
+    note in a subfolder is embedded, searched and tag-linted exactly like one at the root. Use
+    it to keep a project's note and its material together, so the whole folder archives as one
+    unit; the convention is that the entry note repeats the folder name
+    (`projects/algebra/algebra.md`, because Obsidian resolves `[[wikilinks]]` by name) and
+    everything else is `{folder}--{descriptor}.md`.
+
+    `embed=False` writes `embed: false` into the frontmatter: the file lands in the vault but is
+    never embedded, cached, or returned by search — for material that belongs *beside* a note
+    rather than *as* one (project scratch, a colocated README, a draft). Call
+    `get_note_template("not-a-note")` first. Embedding is the default deliberately: an unmarked
+    file turns up in search where a wrong inclusion is obvious, whereas wrongly excluding one
+    makes it **silently** unfindable. When unsure, leave it embedded.
+
     Refuses to overwrite an existing note. Committing is what embeds it (the pre-commit hook),
     so it is searchable immediately; the push is what makes it visible to the brain's other
     clients. Returns a report of what landed, including whether the push succeeded.
@@ -499,11 +554,13 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     if not slug:
         raise ValueError(f"title {title!r} has no usable characters for a filename")
 
-    path = VAULT / para_root / f"{slug}.md"
+    dest_dir = _safe_folder(para_root, folder)
+    path = dest_dir / f"{slug}.md"
     # Defense in depth: _slugify already makes an escape impossible, so this can only fire if
     # someone loosens it. Cheap to keep, and this is the one tool that writes to disk.
-    if path.resolve().parent != (VAULT / para_root).resolve():
+    if path.resolve().parent != dest_dir.resolve():
         raise ValueError(f"refusing to write outside vault/{para_root}: {title!r}")
+    dest_dir.mkdir(parents=True, exist_ok=True)
     if path.exists():
         raise ValueError(f"note already exists: {path.relative_to(BRAIN)} — add_note creates "
                          "new notes only; edit an existing one in your editor")
@@ -512,7 +569,14 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     # near-miss is compared to what the vault already has (not to the note's own new tags).
     tag_warnings = _tag_near_miss_warnings(tags)
 
-    front = ["---", f"tags: [{', '.join(tags)}]" if tags else "tags: []", "---", ""]
+    # An excluded file gets no `tags: []`: tags are a note's controlled vocabulary, and a file
+    # that is not a note has no business joining it. Explicit tags are still honored if passed.
+    keys = []
+    if tags or embed:
+        keys.append(f"tags: [{', '.join(tags)}]" if tags else "tags: []")
+    if not embed:
+        keys.append("embed: false")
+    front = ["---", *keys, "---", ""]
     path.write_text("\n".join([*front, f"# {title}", "", body.strip(), ""]), encoding="utf-8")
 
     rel = str(path.relative_to(BRAIN))
@@ -557,10 +621,19 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     # `git config core.hooksPath .githooks`), the commit lands but the note is NOT searchable —
     # a silent, confusing failure. Detect it by the missing sidecar and say so out loud.
     sidecar = path.parent / f".{path.stem}.embed.json"
-    embedded = ("embedded + searchable now (pre/post-commit hooks)" if sidecar.exists() else
-                "WARNING: committed but NOT embedded — the git hooks are not active in this "
-                "brain (run: git config core.hooksPath .githooks), so this note will not be "
-                "found by search until you run scripts/embed_vault.py + scripts/hydrate_cache.py")
+    if not embed:
+        # An excluded file has no sidecar BY DESIGN, so the missing-hooks check below would
+        # read the intended outcome as a failure and shout about it. Say what actually
+        # happened instead — and say it plainly, because "not searchable" is the one thing
+        # the user must not be surprised by later.
+        embedded = ("excluded from the brain by embed: false — NOT embedded and NOT searchable, "
+                    "which is what was asked for; delete that frontmatter line and re-commit to "
+                    "put it in the brain")
+    else:
+        embedded = ("embedded + searchable now (pre/post-commit hooks)" if sidecar.exists() else
+                    "WARNING: committed but NOT embedded — the git hooks are not active in this "
+                    "brain (run: git config core.hooksPath .githooks), so this note will not be "
+                    "found by search until you run scripts/embed_vault.py + scripts/hydrate_cache.py")
 
     # Lead with the bad news. A partial failure here still returns SUCCESS (the note really was
     # created, committed and embedded — it would be wrong to raise), so nothing forces the model
@@ -610,17 +683,38 @@ def list_vault(para_root: str = "", match: str = "") -> list[dict]:
 
 
 @mcp.tool(structured_output=False)
-def get_note_template() -> str:
-    """Return this brain's note template — the house style `add_note`'s body should follow.
+def get_note_template(variant: str = "note") -> str:
+    """Return one of this brain's templates — the house style `add_note`'s body should follow.
 
-    Read it before composing a note so a new note looks like the ones already here. This is the
-    vault's live template, which the brain's owner may have edited, so it is the authority on
-    shape — not any convention you might assume.
+    Read it before composing a note so a new note looks like the ones already here. These are
+    the vault's live templates, which the brain's owner may have edited, so they are the
+    authority on shape — not any convention you might assume.
+
+    `variant` is one of:
+
+    * `note` (default) — a durable, embedded PARA note. Carries this brain's bar for **what
+      earns a note at all**; apply that gate before writing.
+    * `not-a-note` — Markdown that lives *inside* a PARA root without being a note, via
+      `embed: false` in its frontmatter: project scratch, a colocated README, a draft, a
+      hand-maintained table. Never embedded, never cached, never returned by search.
+
+    Reach for `not-a-note` when the material belongs **beside** a note rather than **as** one,
+    so a project folder archives as one unit. But embedding is the default for a reason: an
+    unmarked file turns up in a search result, where a wrong inclusion is obvious and one line
+    fixes it, whereas wrongly excluding something makes it silently unfindable. When unsure,
+    write a note.
     """
-    if not TEMPLATE.exists():
+    path = TEMPLATES.get(variant)
+    if path is None:
+        raise ValueError(f"variant must be one of {sorted(TEMPLATES)}, got {variant!r}")
+    if not path.exists():
+        if variant == "not-a-note":
+            return ("This brain has no vault/templates/not-a-note.md. Put `embed: false` on its "
+                    "own line in the YAML frontmatter — that is the whole mechanism — and write "
+                    "ordinary Markdown below it.")
         return ("This brain has no vault/templates/new-note.md. Use a short H1 title, a "
                 "paragraph or two of durable content, and [[wikilinks]] to related notes.")
-    return TEMPLATE.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8")
 
 
 @mcp.tool(structured_output=False)
@@ -790,7 +884,7 @@ def list_inbox_pdfs(folder: str = "") -> list[dict]:
 
 
 @mcp.tool(structured_output=False)
-def add_pdf(pdf_path: str, para_root: str) -> str:
+def add_pdf(pdf_path: str, para_root: str, folder: str = "") -> str:
     """Ingest a PDF: move it into ``vault/<para_root>/``, then chunk, embed, and index it.
 
     ``pdf_path`` must be a file inside one of the configured source folders (see
@@ -798,6 +892,11 @@ def add_pdf(pdf_path: str, para_root: str) -> str:
     PDF's passages become searchable via ``search_pdf_passages``. Needs the optional pypdf
     dependency (``pip install -r requirements-pdf.txt``). Does **not** commit or push — the PDF and
     its index are git-ignored.
+
+    ``folder`` (optional) is a subfolder under the PARA root, lowercase kebab-case, e.g.
+    ``algebra`` -> ``vault/projects/algebra/``. Use it to put a PDF beside the note it belongs
+    to — a project's paperwork trail living with its project note, so the folder archives as
+    one unit. That colocation is the case a flat PARA root cannot express.
     """
     p = Path(pdf_path)
     if not p.is_absolute():
@@ -806,7 +905,7 @@ def add_pdf(pdf_path: str, para_root: str) -> str:
         raise ValueError(f"refusing to ingest a file outside the configured source folders: "
                          f"{pdf_path} (call list_inbox_pdfs to see them)")
     try:
-        s = _add_pdf.add_pdf(p, para_root)
+        s = _add_pdf.add_pdf(p, para_root, folder=folder)
     except SystemExit as exc:  # pypdf missing surfaces as SystemExit; make it a normal tool error
         raise ValueError(str(exc)) from exc
     return (f"ingested {s['source_file']} — {s['pages']} page(s), {s['chunks']} chunk(s) now "
