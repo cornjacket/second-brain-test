@@ -1,6 +1,5 @@
 ---
 tags: [math, cset]
-embed: false
 ---
 
 # Algebra
