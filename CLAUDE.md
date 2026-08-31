@@ -77,10 +77,13 @@ is what happened; the *lesson* you drew from it is what transfers.
   goal-bound and ends, so its note and material archive as one unit; a resource is filed by
   topic and an area never ends, so both refuse. **Every folder that holds material carries a
   note named after it, at every level** — `projects/algebra/algebra.md`,
-  `projects/algebra/chapter-1/chapter-1.md`. It looks redundant and it is the form that works:
-  Obsidian resolves `[[wikilinks]]` by **name**, so the link survives the move to `archive/`.
-  Name folders as the title slugifies (`chapter-1`, not `chapter1`), or the entry note cannot
-  match its folder. Everything else in a folder is `{folder}--{descriptor}.md`.
+  `projects/algebra/algebra-chapter-1/algebra-chapter-1.md`. It looks redundant and it is the
+  form that works: Obsidian resolves `[[wikilinks]]` by **name**, so the link survives the move
+  to `archive/`. Name folders as the title slugifies (`chapter-1`, not `chapter1`), or the entry
+  note cannot match its folder. **Name a child after its parent — `{parent}-{descriptor}` — for
+  a nested folder and a plain file alike** (`algebra-chapter-1/`, `algebra-progress.md`). That
+  prefix is what keeps the name unique: the entry-note rule turns every folder name into a note
+  name, and a bare `chapter-1/` works only until a second subject has a chapter 1.
 - **Note filenames must be unique across the whole vault** — the pre-commit hook refuses a
   duplicate. Obsidian resolves `[[wikilinks]]` by name, so two `chapter-1.md` files make every
   link to that name ambiguous and silently misrouted. This used to hold by accident (a flat

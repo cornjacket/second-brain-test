@@ -121,6 +121,24 @@ class UniqueNames(unittest.TestCase):
         (self.root / "vault" / "glossary" / "new-note.md").write_text("x", encoding="utf-8")
         self.assertEqual(un.duplicates(self.root), {})
 
+    def test_the_DOCUMENTED_nested_naming_survives_two_projects(self):
+        """The canonical example, followed twice. If it collides, the docs teach a trap.
+
+        A bare `chapter-1/chapter-1.md` reads fine in isolation and fails the moment a second
+        subject has a chapter 1 — which is the whole reason a child is named after its parent.
+        """
+        self.write("vault/projects/algebra/algebra.md")
+        self.write("vault/projects/algebra/algebra-chapter-1/algebra-chapter-1.md")
+        self.write("vault/projects/geometry/geometry.md")
+        self.write("vault/projects/geometry/geometry-chapter-1/geometry-chapter-1.md")
+        self.assertEqual(un.duplicates(self.root), {})
+
+    def test_the_UNSCOPED_form_is_what_collides(self):
+        """The negative of the test above — otherwise it proves only that four names differ."""
+        self.write("vault/projects/algebra/chapter-1/chapter-1.md")
+        self.write("vault/projects/geometry/chapter-1/chapter-1.md")
+        self.assertEqual(sorted(un.duplicates(self.root)), ["chapter-1.md"])
+
     def test_an_asset_never_collides_with_a_note(self):
         # Assets are not walked: two tile.svg files in different project folders are fine,
         # because a relative image link resolves by PATH, not by name.

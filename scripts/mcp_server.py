@@ -552,10 +552,16 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     note is embedded, searched and tag-linted exactly like one at the root.
 
     **Every folder that holds material carries an entry note named after it**, at every level:
-    `projects/algebra/algebra.md`, and `projects/algebra/chapter-1/chapter-1.md`. It looks
-    redundant and it is the form that works — Obsidian resolves `[[wikilinks]]` by name, so the
-    link survives the move to `archive/`. Everything else in a folder is
-    `{folder}--{descriptor}.md`.
+    `projects/algebra/algebra.md`, and `projects/algebra/algebra-chapter-1/algebra-chapter-1.md`.
+    It looks redundant and it is the form that works — Obsidian resolves `[[wikilinks]]` by
+    name, so the link survives the move to `archive/`.
+
+    **Name a child after its parent — `{parent}-{descriptor}` — for a nested folder and a
+    plain file alike** (`algebra-chapter-1/`, `algebra-progress.md`). That prefix is not
+    decoration. The entry-note rule turns every folder name into a note name, and note names
+    must be unique vault-wide, so a bare `chapter-1/` works until a second subject has a
+    chapter 1 and then the hook refuses the write. Scoping makes the name unique by
+    construction rather than by luck.
 
     **Name the folder as the title slugifies.** `title` becomes a kebab-case filename, so
     "Chapter 1" -> `chapter-1.md`, and the folder must therefore be `chapter-1`, NOT `chapter1`
@@ -565,8 +571,8 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     **Note filenames must be unique across the whole vault**, because Obsidian resolves
     `[[wikilinks]]` by basename: two `chapter-1.md` files make every link to that name
     ambiguous. The pre-commit hook **refuses** a duplicate, so a colliding title fails this
-    write rather than corrupting links silently. Where a generic name would collide, scope it to
-    its folder — `Algebra Chapter 1` -> `algebra-chapter-1.md`.
+    write rather than corrupting links silently. This is why the naming rule above scopes a
+    child to its parent: pass `title="Algebra Chapter 1"`, not `title="Chapter 1"`.
 
     **Files that are not notes go in with `add_asset`** — a diagram, an image, a data file.
     Reference one from this body with a **relative markdown link**,
@@ -701,12 +707,17 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     if subpath:
         leaf = subpath.rsplit("/", 1)[-1]
         if not (dest_dir / f"{leaf}.md").exists():
-            folder_hint = (f"\nFOLDER HINT: vault/{para_root}/{subpath} has no entry note. The "
-                           f"convention is that every folder carries a note named after it — "
-                           f"add_note(title=\"{leaf.replace('-', ' ').title()}\", "
-                           f"para_root=\"{para_root}\", subpath=\"{subpath}\") would create "
-                           f"{leaf}.md — so [[{leaf}]] keeps resolving after the folder moves "
-                           f"to archive/. Name folders as the title slugifies.")
+            # The suggested title must slugify back to the folder name exactly, or the hint
+            # tells the caller to run a command that does not produce the file it promises.
+            # `_slugify` collapses any run of non-alphanumerics to ONE hyphen, so a folder
+            # name is always recoverable as a title by swapping hyphens for spaces.
+            suggested = leaf.replace("-", " ").title()
+            folder_hint = (f"\nFOLDER HINT: vault/{para_root}/{subpath} has no entry note. Every "
+                           f"folder carries a note named after it — "
+                           f"add_note(title=\"{suggested}\", para_root=\"{para_root}\", "
+                           f"subpath=\"{subpath}\") creates {leaf}.md, so [[{leaf}]] keeps "
+                           f"resolving after the folder moves to archive/. Name a folder for "
+                           f"its parent plus a descriptor, and name it as its title slugifies.")
     return (f"{head}created {rel}\ncommitted to {branch}\n{pushed}\n{embedded}"
             f"{tag_hint}{folder_hint}")
 
@@ -916,16 +927,18 @@ async def second_brain_overview() -> str:
   area never ends, so both refuse.
 
   ENTRY NOTES. Every folder holding material carries a note named after it, at every level:
-  projects/algebra/algebra.md, projects/algebra/chapter-1/chapter-1.md. Obsidian resolves
-  [[wikilinks]] by NAME, so this is what keeps a link working after the folder moves to
-  archive/. Everything else in a folder is {{folder}}--{{descriptor}}.md.
+  projects/algebra/algebra.md, projects/algebra/algebra-chapter-1/algebra-chapter-1.md.
+  Obsidian resolves [[wikilinks]] by NAME, so this is what keeps a link working after the
+  folder moves to archive/. A child is named after its parent: {{parent}}-{{descriptor}}, for a
+  nested FOLDER and for a plain file alike (algebra-progress.md). That prefix is not decoration
+  — it is what keeps the name unique, since the folder name becomes a note name.
 
   NAMING. `title` becomes a kebab-case filename, so name folders as the title slugifies:
   "Chapter 1" -> chapter-1.md -> the folder must be `chapter-1`, never `chapter1`.
 
   UNIQUENESS. Note filenames must be unique across the whole vault — the pre-commit hook
-  REFUSES a duplicate, so a colliding title fails the write. Scope a generic name to its
-  folder ("Algebra Chapter 1") rather than reusing a bare one.
+  REFUSES a duplicate, so a colliding title fails the write. The parent-prefix rule above is
+  how you satisfy it: title "Algebra Chapter 1", never a bare "Chapter 1".
 
   WHAT IS NOT A NOTE. Markdown that is material rather than a note takes `embed=False`
   (frontmatter `embed: false`): kept in the vault, never embedded, never searchable. A file
