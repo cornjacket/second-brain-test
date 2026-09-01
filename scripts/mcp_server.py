@@ -608,6 +608,13 @@ def add_note(title: str, para_root: str, body: str, tags: list[str] | None = Non
     embedded as ONE vector, and box-drawing characters cost about a token each, so unfenced art
     both dilutes the vector and can overflow the embedder's context outright.
 
+    If it contains **reference data** — IDs, phone numbers, account names, a contact list, a
+    volatile checklist — fence that between `<!-- second-brain:lexical-only:begin -->` and
+    `<!-- second-brain:lexical-only:end -->` instead. That region leaves the vector but stays in
+    **keyword** search: an identifier is a token, not a meaning, so it dilutes an embedding and
+    is exactly what BM25 is good at. It also leaves the content hash, so later edits inside the
+    fence re-index without re-embedding. **Fences do not nest** — one layer, either kind.
+
     `subpath` (optional) nests the note **under** the PARA root, lowercase kebab-case, e.g.
     `algebra/chapter-1` -> `vault/projects/algebra/chapter-1/<slug>.md`. Allowed under
     **projects/ and archive/ only** — a project is goal-bound and ends, so its note and its
@@ -959,6 +966,9 @@ def list_vault(para_root: str = "", match: str = "") -> list[dict]:
 # parameter names), and prune anything older than a few releases: this is a corrective for
 # stale memory, not a changelog.
 INTERFACE_CHANGES = [
+    ("2026-09-01", "NEW fence `<!-- second-brain:lexical-only:begin/end -->` — keeps a region "
+                   "out of the VECTOR but in KEYWORD search, for IDs, contacts and checklists. "
+                   "`no-embed` still removes a region from both. Fences do not nest."),
     ("2026-08-31", "add_note gained `entry=True` and `descriptor=...` — pass the file's name "
                    "as STRUCTURE, not inside `title`. `title` is now the H1 only. A name that "
                    "does not fit its folder is refused BEFORE the write."),
@@ -1034,6 +1044,14 @@ async def second_brain_overview() -> str:
   UNIQUENESS. Note filenames must be unique across the whole vault — the pre-commit hook
   REFUSES a duplicate. entry/descriptor are how you satisfy it: they scope the name to its
   folder, so two projects can each have a chapter 1 without colliding.
+
+  FENCES. Two, and they exclude different things. `no-embed` removes a region from the vector
+  AND from keyword search — for content with no meaning to retrieve by, like ASCII art.
+  `lexical-only` removes it from the vector but KEEPS it in keyword search — for reference data
+  (IDs, phone numbers, contacts) and volatile checklists, since an identifier is a token rather
+  than a meaning. A lexical-only region is also outside the content hash, so editing it
+  re-indexes without re-embedding. One layer only: fences never nest, and the pre-commit hook
+  refuses a malformed one.
 
   WHAT IS NOT A NOTE. Markdown that is material rather than a note takes `embed=False`
   (frontmatter `embed: false`): kept in the vault, never embedded, never searchable. A file

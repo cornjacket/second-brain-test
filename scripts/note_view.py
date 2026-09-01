@@ -46,6 +46,25 @@ _WIKILINK = re.compile(r"!?\[\[([^\[\]|]+?)(?:\|([^\[\]]+?))?\]\]")
 NO_EMBED_BEGIN = "<!-- second-brain:no-embed:begin -->"
 NO_EMBED_END = "<!-- second-brain:no-embed:end -->"
 
+# The second fence. A `lexical-only` region leaves the **vector** (and the content hash, so
+# editing it re-embeds nothing) but stays in the **lexical** index.
+#
+# `no-embed` is for content that carries no meaning at all — ASCII art, a box-drawn diagram —
+# so keeping it out of keyword search too is right. Reference data is the opposite case: an
+# ID, a phone number, an account name is a *token*, not a meaning. It is useless to an
+# embedding, which is about similarity, and it is exactly what BM25 is good at. Same for a
+# volatile checklist: its state changes constantly and carries no semantic change, but "TB
+# test" is still a phrase worth finding.
+#
+# Named for the retrieval outcome — "findable by exact words, not by meaning" — rather than
+# for the mechanism. `no-vector` was the alternative and reads too much like `no-embed`.
+LEXICAL_ONLY_BEGIN = "<!-- second-brain:lexical-only:begin -->"
+LEXICAL_ONLY_END = "<!-- second-brain:lexical-only:end -->"
+
+# Both fences, for the validator. Order matters nowhere except in these messages.
+FENCES = ((NO_EMBED_BEGIN, NO_EMBED_END, "no-embed"),
+          (LEXICAL_ONLY_BEGIN, LEXICAL_ONLY_END, "lexical-only"))
+
 # nomic-embed-text's context is 2048 tokens; warn below it so there is room for the
 # backend's task prefix and for the estimate to be a little low.
 EMBED_TOKEN_BUDGET = 1800
@@ -151,6 +170,65 @@ def strip_no_embed(body: str) -> str:
     return remove_all_blocks(body, NO_EMBED_BEGIN, NO_EMBED_END)
 
 
+def strip_lexical_only(body: str) -> str:
+    """Remove every ``lexical-only`` block — kept out of the vector, kept in keyword search."""
+    return remove_all_blocks(body, LEXICAL_ONLY_BEGIN, LEXICAL_ONLY_END)
+
+
+def fence_errors(text: str) -> list[str]:
+    """Everything wrong with this note's fences, as human-readable lines. Empty == valid.
+
+    Two rules, and the second is what keeps this a single pass:
+
+    1. **Every marker pairs.** An unpaired ``begin`` delimits nothing, so the region a human
+       meant to exclude is embedded anyway — silent, because the note still commits.
+    2. **Fences never nest.** One layer only, of either kind. Nesting has no useful meaning
+       here (the inner fence could only repeat or contradict the outer), and forbidding it
+       makes validity checkable by scanning markers in order and asserting they alternate.
+
+    Deliberately returns messages rather than a bool: with two fence types, "invalid" is not
+    actionable on its own — which marker, and where, is the whole content of the answer.
+    """
+    problems: list[str] = []
+    for begin, end, name in FENCES:
+        if unpaired_markers(text, begin, end):
+            problems.append(f"a `{name}` marker pairs with nothing — the region it was meant "
+                            f"to fence is NOT excluded, and nothing else will say so")
+
+    # Nesting: walk every marker in document order; a begin while one is open, or an end that
+    # closes the wrong fence, is an error. This also catches interleaving (`no-embed:begin`,
+    # `lexical-only:begin`, `no-embed:end`), which pairs by count and is still meaningless.
+    marks = sorted(
+        [(offset, name, kind)
+         for begin, end, name in FENCES
+         for marker, kind in ((begin, "begin"), (end, "end"))
+         for offset in _offsets(text, marker)])
+    open_fence: str | None = None
+    for _, name, kind in marks:
+        if kind == "begin":
+            if open_fence is not None:
+                problems.append(f"a `{name}` fence opens inside an open `{open_fence}` fence — "
+                                f"fences do not nest, use one layer only")
+                break
+            open_fence = name
+        else:
+            if open_fence != name:
+                problems.append(f"a `{name}` fence closes where `{open_fence or 'nothing'}` "
+                                f"was open — fences must not interleave")
+                break
+            open_fence = None
+    return problems
+
+
+def _offsets(text: str, needle: str) -> list[int]:
+    """Every start offset of ``needle`` in ``text``."""
+    out, i = [], text.find(needle)
+    while i != -1:
+        out.append(i)
+        i = text.find(needle, i + len(needle))
+    return out
+
+
 def has_unpaired_no_embed(text: str) -> bool:
     """True if a ``no-embed`` marker in ``text`` pairs with nothing (a typo'd block).
 
@@ -187,8 +265,41 @@ def canonical_body(text: str) -> str:
     body = _strip_frontmatter(text)
     body = body.replace("\r\n", "\n").replace("\r", "\n")
     body = strip_no_embed(body)
+    body = strip_lexical_only(body)
     # Before strip_wikilinks: it would turn `![[tile.svg]]` into the bare text `tile.svg`,
     # which is the filename this step exists to remove.
+    body = strip_asset_links(body)
+    body = strip_wikilinks(body)
+    body = body.strip("\n")
+    return body + "\n" if body else ""
+
+
+def lexical_body(text: str) -> str:
+    """The view the **keyword** index sees: like the canonical view, but reference data stays.
+
+    Differs from ``canonical_body`` in **exactly one** way: ``lexical-only`` blocks are kept.
+    Everything else — frontmatter, line endings, ``no-embed`` blocks, asset filenames, wikilink
+    brackets — is treated identically, and that narrowness is the whole safety argument. #39's
+    lesson was that the embedding, the content hash and the lexical index disagree the moment
+    they are computed from different projections; one deliberate difference is auditable, two
+    is where drift starts.
+
+    (Wikilink handling is shared, not a difference: ``strip_wikilinks`` removes the brackets
+    and keeps the target text, so a linked term is already searchable in both halves.)
+
+    ``no-embed`` is still stripped here: art has no meaning to retrieve by, in either half.
+
+    This feeds FTS only. It never touches the vector or the hash, which is why editing inside
+    a ``lexical-only`` fence re-indexes the note without re-embedding it — the lexical row is
+    rewritten on every upsert, while the sidecar is skipped when the content hash is unchanged.
+    """
+    body = _strip_frontmatter(text)
+    body = body.replace("\r\n", "\n").replace("\r", "\n")
+    body = strip_no_embed(body)
+    # Keep what the fence surrounds, drop the fence: the marker is machinery, and left in it
+    # would make every fenced note match a search for "second-brain" or "lexical-only".
+    for marker in (LEXICAL_ONLY_BEGIN, LEXICAL_ONLY_END):
+        body = body.replace(marker + "\n", "").replace(marker, "")
     body = strip_asset_links(body)
     body = strip_wikilinks(body)
     body = body.strip("\n")

@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from embedder import backend_id, embed, is_deterministic  # noqa: E402
 from note_selection import notes_for_commit  # noqa: E402
 from note_view import (  # noqa: E402
-    EMBED_TOKEN_BUDGET, NO_EMBED_BEGIN, NO_EMBED_END,
-    canonical_body, content_hash, embed_excluded, estimate_tokens, has_unpaired_no_embed,
+    EMBED_TOKEN_BUDGET,
+    canonical_body, content_hash, embed_excluded, estimate_tokens, fence_errors,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -88,23 +88,26 @@ def warn_embed_input(note: str) -> None:
     model sees — and both are advisory: the commit proceeds either way, since a note the
     hook refuses is a note the user cannot save.
 
-    - **Unpaired marker** — a ``no-embed`` block that never closes excludes nothing, so
-      the art the human fenced off is embedded anyway. Silent without this: the note
-      commits and searches fine, just polluted.
+    - **Malformed fence** — a block that never closes excludes nothing, and a nested one has
+      no defined meaning, so the region the human fenced off is embedded anyway. Silent
+      without this: the note commits and searches fine, just polluted.
     - **Over the token budget** — the note is close enough to the embedder's context that
       the embed may fail outright. Said *here* rather than left to the backend's
       ``input length exceeds the context length`` error, because this message can name
       the fix.
     """
     text = (REPO_ROOT / note).read_text(encoding="utf-8")
-    if has_unpaired_no_embed(text):
-        print(f"  ⚠️  {note}: a no-embed marker has no partner — nothing was excluded. "
-              f"Pair {NO_EMBED_BEGIN} with {NO_EMBED_END}.")
+    # One validator for both fences, shared with scripts/check_fences.py — the hook and the
+    # scanner disagreeing about what "valid" means is its own small version of this feature's
+    # central risk.
+    for problem in fence_errors(text):
+        print(f"  ⚠️  {note}: {problem}")
     tokens = estimate_tokens(canonical_body(text))
     if tokens > EMBED_TOKEN_BUDGET:
         print(f"  ⚠️  {note}: ~{tokens} tokens of embed input (budget {EMBED_TOKEN_BUDGET}) — "
               f"the embed may fail. Fence decorative regions (diagrams, ASCII art, wide "
-              f"tables) in a no-embed block, or split the note.")
+              f"tables) in a no-embed block, reference data (IDs, contacts, checklists) in a "
+              f"lexical-only block, or split the note.")
 
 
 def drop_sidecar(note: str) -> bool:

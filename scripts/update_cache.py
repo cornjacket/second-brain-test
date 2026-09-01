@@ -33,7 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
 from features import encryption  # noqa: E402  (which mode this brain is in)
-from note_view import canonical_body, embed_excluded, frontmatter_tags  # noqa: E402
+from note_view import (  # noqa: E402
+    canonical_body, embed_excluded, frontmatter_tags, lexical_body,
+)
 
 import sqlite_vec  # noqa: E402
 
@@ -90,8 +92,12 @@ def index_fts(db, note: str) -> None:
     if not path.exists():
         return
     text = path.read_text(encoding="utf-8")
+    # lexical_body, NOT canonical_body: a `lexical-only` region is kept out of the vector but
+    # belongs here, which is the whole point of the second fence. hydrate_cache writes the same
+    # table and must use the same projection — the two disagreeing is how art or IDs end up in
+    # one index and not the other depending on which path last touched the row.
     db.execute("INSERT INTO notes_fts(source_file, body, tags) VALUES (?, ?, ?)",
-               (note, canonical_body(text), " ".join(frontmatter_tags(text))))
+               (note, lexical_body(text), " ".join(frontmatter_tags(text))))
 
 
 def upsert(db, note: str) -> None:

@@ -147,6 +147,25 @@ name ambiguous — it picks one and the other becomes unreachable. Name a child 
 that structure to `add_note` as `entry=True` or `descriptor=...` rather than writing it into the
 title — the title is the heading, and the slugifier cannot produce a `--`.
 
+**Keep reference data out of the vector but findable by keyword** — fence it:
+
+```markdown
+<!-- second-brain:lexical-only:begin -->
+- SCCOE ref: REG-066388   ·   Credential Services: 408-453-6767
+<!-- second-brain:lexical-only:end -->
+```
+
+Search is hybrid — BM25 keyword matching fused with vector similarity — and the two halves are
+good at different things. An ID or a phone number is a *token*: it dilutes an embedding and it
+is precisely what keyword search nails. This fence sends such a region to the keyword half
+only. It also takes the region out of the content hash, so **editing inside it re-indexes
+without re-embedding** — which makes a live checklist or a contact list free to maintain.
+
+Use `no-embed` instead for content that has no meaning to retrieve by at all (ASCII art,
+diagrams): that leaves both halves. Fences **do not nest** — one layer, either kind — and the
+pre-commit hook refuses a malformed one, since a broken fence silently excludes nothing.
+Check by hand with `python3 scripts/check_fences.py`.
+
 **Keep a file out of the brain** — put `embed: false` in its frontmatter:
 
 ```yaml

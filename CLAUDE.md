@@ -108,6 +108,17 @@ is what happened; the *lesson* you drew from it is what transfers.
   model's context and fail to embed. **The embed budget is tokens, not lines.** Editing
   inside the block is free: the excluded region is invisible to the content hash too, so
   redrawing a diagram triggers no re-embed and no `doctor.py` staleness.
+- **Fence reference data in a lexical-only block.** Wrap IDs, phone numbers, account names,
+  contact lists and volatile checklists between `<!-- second-brain:lexical-only:begin -->` and
+  `<!-- second-brain:lexical-only:end -->`: the region leaves the **vector** but stays in
+  **keyword** search. An identifier is a token, not a meaning — useless to an embedding, and
+  exactly what BM25 is good at. Two payoffs: the note's vector stops being diluted by numbers,
+  and editing inside the fence is **free** — the region is outside the content hash, so ticking
+  a checkbox or correcting a phone number re-indexes without re-embedding.
+  The difference from `no-embed` is what it keeps: `no-embed` is for content with no meaning to
+  retrieve by *at all* (ASCII art), so it leaves both halves. **Fences do not nest** — one layer
+  only, of either kind — and the pre-commit hook refuses a malformed one, because a broken
+  fence excludes nothing and says so nowhere (`python3 scripts/check_fences.py`).
 - **Reuse tags; don't split the vocabulary.** Before tagging a note, see what tags
   already exist (`python3 scripts/tag_lint.py`, or the `list_tags` MCP tool) and reuse
   one rather than minting a near-duplicate (`ml`/`machine-learning`, `agents`/`ai-agents`)

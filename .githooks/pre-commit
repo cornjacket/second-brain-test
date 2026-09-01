@@ -7,9 +7,11 @@
 #     the same commit (scripts/embed_staged.py).
 #  3. Warn — never block — when a staged Markdown note exceeds 300 non-empty lines
 #     (scripts/check_line_count.py, Task 0002). Excludes README.md and tasks/.
-#  4. Refuse the commit if two notes anywhere in the vault share a filename
+#  4. Refuse the commit if a note's no-embed / lexical-only fences are malformed
+#     (scripts/check_fences.py) — a broken fence excludes nothing, silently.
+#  5. Refuse the commit if two notes anywhere in the vault share a filename
 #     (scripts/check_unique_names.py) — Obsidian resolves [[wikilinks]] by name.
-#  5. If encryption is enabled, encrypt the notes that changed and stage their blobs
+#  6. If encryption is enabled, encrypt the notes that changed and stage their blobs
 #     (scripts/encrypt_vault.py --precommit). Silent no-op when the toggle is off.
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
@@ -24,6 +26,15 @@ notes="$(python3 "$ROOT/scripts/note_selection.py")"
 if [ -n "$notes" ]; then
   # shellcheck disable=SC2086  # intentional word-split; note paths have no spaces
   python3 "$ROOT/scripts/check_line_count.py" $notes || true
+fi
+
+# Validate the exclusion fences on the notes being committed. A malformed fence excludes
+# NOTHING, so the region a human meant to keep out of the index is embedded anyway — silent,
+# because the note commits and renders correctly either way. Blocks, like the uniqueness check
+# below: an unnoticed fence typo can put reference data or a private number into a vector.
+if [ -n "$notes" ]; then
+  # shellcheck disable=SC2086  # intentional word-split; note paths have no spaces
+  python3 "$ROOT/scripts/check_fences.py" $notes
 fi
 
 # Refuse two notes with the same filename anywhere in the vault. Obsidian resolves

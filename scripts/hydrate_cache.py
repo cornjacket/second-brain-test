@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from db import connect  # noqa: E402
 from embedder import EMBED_DIM  # noqa: E402
-from note_view import canonical_body, frontmatter_tags  # noqa: E402
+from note_view import frontmatter_tags, lexical_body  # noqa: E402
 from update_cache import FTS_DDL, TABLE_DDL  # noqa: E402  (shared cache schema)
 
 import sqlite_vec  # noqa: E402
@@ -93,7 +93,8 @@ def main() -> int:
                 note_text = note_path.read_text(encoding="utf-8")
                 db.execute(
                     "INSERT INTO notes_fts(source_file, body, tags) VALUES (?, ?, ?)",
-                    (src, canonical_body(note_text), " ".join(frontmatter_tags(note_text))),
+                    # Same projection as update_cache.index_fts — see the note there.
+                    (src, lexical_body(note_text), " ".join(frontmatter_tags(note_text))),
                 )
             count += 1
         chunk_count = pdf_cache.load_all(db, chunk_payloads) if pdf_cache is not None else 0
