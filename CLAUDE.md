@@ -134,6 +134,20 @@ is what happened; the *lesson* you drew from it is what transfers.
   or commit them. The only committed sidecars are the deterministic fixtures under
   `tests/fixtures/vault/`.
 
+## The dashboard — read it before asking what to work on
+
+[`vault/dashboard-index.md`](vault/dashboard-index.md) is the brain's status page: one
+row per **active** effort, each naming its next action and what it is blocked on.
+**Read it whenever the question is "what is live", "what should I do next", or "where
+did we leave off"** — search cannot answer those. Similarity is not state: an
+embedding will never know that an item is unchecked or that a reply is three weeks
+late.
+
+It deliberately sits at the **vault root, outside every PARA root**, so it is never
+embedded and never appears in search results. You will not stumble across it — come
+here by path. Keep it current when work lands, and **point at the note that owns a
+task rather than copying its checklist**; the file itself explains why.
+
 ## Querying knowledge
 
 Before solving something from scratch, search what the brain already knows:
