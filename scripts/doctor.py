@@ -47,7 +47,15 @@ sys.path.insert(0, str(SCRIPTS))
 from embedder import EMBED_DIM, backend_id, backend_name  # noqa: E402
 from features import hybrid_search, rrf_k  # noqa: E402
 import embed_staged as es  # noqa: E402  (write_sidecar / sidecar_path helpers)
-from note_view import content_hash, embed_excluded  # noqa: E402  (the embed-input fingerprint)
+from note_view import (  # noqa: E402  (the embed-input fingerprint)
+    EMBED_TOKEN_BUDGET, canonical_body, content_hash, embed_excluded, estimate_tokens,
+)
+
+# Report a note once it reaches this share of the embed budget. The budget itself is already
+# enforced per-note at commit time by embed_staged.py — but that only ever speaks about the
+# note being committed, so a vault drifts toward the ceiling one untouched file at a time and
+# nothing ever says so. This is the standing audit that per-commit warning cannot be.
+BUDGET_WARN_FRACTION = 0.85
 
 
 class Report:
@@ -55,6 +63,7 @@ class Report:
 
     def __init__(self) -> None:
         self.problems = 0
+        self.manual = 0
 
     def ok(self, msg: str) -> None:
         print(f"  ok    {msg}")
@@ -62,6 +71,20 @@ class Report:
     def fail(self, msg: str) -> None:
         print(f"  FAIL  {msg}")
         self.problems += 1
+
+    def needs_edit(self, msg: str) -> None:
+        """A real problem that ``--repair`` cannot touch — it needs a human editing a note.
+
+        Kept apart from :meth:`fail` only so the closing hint stays true. Every other problem
+        doctor reports is machine-fixable (re-embed, re-hydrate, drop an orphan), so the
+        summary has always been able to promise ``--repair``. A note over the embed budget is
+        the first kind that cannot be: nothing but shortening the note will do, and telling
+        someone to run a flag that will report the identical problem again teaches them to
+        distrust the hint.
+        """
+        print(f"  FAIL  {msg}")
+        self.problems += 1
+        self.manual += 1
 
     def info(self, msg: str) -> None:
         print(f"        {msg}")
@@ -531,6 +554,46 @@ def report_consistency(rep: Report, st: dict) -> None:
         pdf_tail = f" + {len(pdf.get('sidecars', {}))} pdf(s)" if pdf.get("sidecars") else ""
         rep.ok(f"vault↔sidecar↔db in sync ({len(st['notes'])} note(s){pdf_tail})")
 
+    _report_embed_budget(rep, st["notes"])
+
+
+def _report_embed_budget(rep: "Report", notes) -> None:
+    """Name the notes closest to the embed ceiling, worst first.
+
+    A note that outgrows the budget does not degrade — it **fails to embed**, and the model
+    says so (`the input length exceeds the context length`). embed_staged.py already refuses
+    to let that arrive unannounced, but only for the note in front of it. Nothing reports the
+    note you last touched a year ago and have been steadily appending to, so the first news of
+    a full vault is a commit that will not embed.
+
+    Counted over ``canonical_body`` — the actual embed input — so fenced regions and
+    ``embed: false`` files are correctly invisible here. Both are the whole point of the
+    fences: a file can be enormous and cost nothing.
+    """
+    near = []
+    for rel in notes:
+        try:
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        tokens = estimate_tokens(canonical_body(text))
+        if tokens >= EMBED_TOKEN_BUDGET * BUDGET_WARN_FRACTION:
+            near.append((tokens, rel))
+    if not near:
+        return
+    near.sort(reverse=True)
+
+    over = [(t, r) for t, r in near if t > EMBED_TOKEN_BUDGET]
+    for tokens, rel in over:
+        rep.needs_edit(f"{rel}: ~{tokens} tokens of embed input, over the {EMBED_TOKEN_BUDGET} "
+                       f"budget — fence or split it before it stops embedding")
+    tight = [(t, r) for t, r in near if t <= EMBED_TOKEN_BUDGET]
+    if tight:
+        worst = ", ".join(f"{Path(r).name} (~{t})" for t, r in tight[:3])
+        rep.info(f"{len(tight)} note(s) within {int((1 - BUDGET_WARN_FRACTION) * 100)}% of the "
+                 f"{EMBED_TOKEN_BUDGET}-token embed budget — {worst}"
+                 f"{', …' if len(tight) > 3 else ''}")
+
 
 # --------------------------------------------------------------------------- #
 # --repair
@@ -617,8 +680,13 @@ def main(argv: list[str]) -> int:
 
     print()
     if rep.problems:
-        print(f"doctor: {rep.problems} problem(s) found"
-              + ("" if args.repair else " — re-run with --repair to fix"))
+        if args.repair:
+            tail = ""
+        elif rep.manual == rep.problems:
+            tail = " — these need a note edited, not --repair"
+        else:
+            tail = " — re-run with --repair to fix what it can"
+        print(f"doctor: {rep.problems} problem(s) found{tail}")
         return 1
     print("doctor: brain healthy & consistent")
     return 0
