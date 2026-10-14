@@ -38,7 +38,9 @@ DASHBOARD = "vault/dashboard-index.md"
 PROJECTS = "vault/projects"
 ARCHIVE = "vault/archive"
 
-_LINK = re.compile(r"\[\[([^\]|#]+)")
+# A row's link may carry an alias, and inside a table Obsidian escapes the pipe —
+# `[[career-plan\|Aisha's plan]]` — so the name stops at `]`, `|`, `#` or that backslash.
+_LINK = re.compile(r"\[\[([^\]|#\\]+)")
 _DATE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 _OPEN = re.compile(r"^\s*- \[ \]", re.M)
 

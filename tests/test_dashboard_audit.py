@@ -64,6 +64,11 @@ class DashboardAudit(unittest.TestCase):
                          [("alpha", "2026-02-01"), ("bravo", "2026-01-01"),
                           ("example-project", "2026-01-01")])
 
+    def test_an_aliased_link_in_a_table_names_the_note(self):
+        rows = da.parse_rows("| [[alpha\\|Alpha, aliased]] | x | y | 2026-02-01 |\n"
+                             "| [[bravo|Bravo]] | x | y | 2026-01-01 |\n")
+        self.assertEqual([r.name for r in rows], ["alpha", "bravo"])
+
     def test_current_dashboard_reports_nothing(self):
         self.base()
         self.assertEqual(self.kinds(), [])
