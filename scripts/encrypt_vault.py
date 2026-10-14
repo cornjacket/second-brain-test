@@ -370,15 +370,18 @@ def orphan_blobs(keys: Keys, rel_paths, existing_names) -> set[str]:
 # What gets encrypted follows a rule rather than a list: *if update_brain.py may overwrite
 # it, it is machinery and stays plaintext; otherwise it is content.* An upgrade must never
 # need a passphrase, and anything the devkit is free to overwrite is identical in every
-# brain, so it says nothing about you. That yields the vault minus exactly one carve-out.
+# brain, so it says nothing about you. That yields the vault minus the note templates —
+# exactly the files update_brain.VAULT_OWNED names. The two lists must move together: a template
+# the devkit ships but this tuple omits gets committed by an upgrade and then reported by doctor
+# as a PLAINTEXT note (task #62), and the ignore block below would refuse to let it be added.
 CONTENT_ROOTS = ("projects", "areas", "resources", "archive", "glossary")
-MACHINERY = ("vault/templates/new-note.md",)
+MACHINERY = ("vault/templates/new-note.md", "vault/templates/not-a-note.md")
 
 IGNORE_BEGIN = "# second-brain:encryption:begin"
 IGNORE_END = "# second-brain:encryption:end"
 # Default-deny over the vault: a future file type — an Obsidian .canvas, an attachment, a
-# stray export — cannot silently leak. The one exception is the devkit-owned note template,
-# which a CI gate requires to stay readable. `!/vault/templates/` must precede the file
+# stray export — cannot silently leak. The one exception is the devkit-owned note templates
+# (MACHINERY), which a CI gate requires to stay readable. `!/vault/templates/` must precede the file
 # negation because git cannot re-include a file underneath an excluded DIRECTORY.
 #
 # No .gitkeep is re-included. The golden ships them only in the buckets that happen to be
@@ -388,9 +391,9 @@ IGNORE_BODY = "\n".join([
     "# Every note is content — default-deny, so a new file type cannot leak.",
     "# No directory under vault/ is committed: a folder name is a tell on its own.",
     "/vault/**",
-    "# The devkit-owned note template is machinery, not content, and must stay readable.",
+    "# The devkit-owned note templates are machinery, not content, and must stay readable.",
     "!/vault/templates/",
-    "!/vault/templates/new-note.md",
+    *(f"!/{rel}" for rel in MACHINERY),
 ])
 
 

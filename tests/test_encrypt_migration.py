@@ -111,6 +111,8 @@ class _EncryptedBrain(unittest.TestCase):
         (self.brain / ".gitignore").write_text("data/*\n", encoding="utf-8")
         (self.brain / "vault" / "templates" / "new-note.md").write_text(
             "# template\n", encoding="utf-8")
+        (self.brain / "vault" / "templates" / "not-a-note.md").write_text(
+            "# not a note\n", encoding="utf-8")
         (self.brain / "README.md").write_text("# A brain\n", encoding="utf-8")
 
         self.note = f"vault/projects/{NAME_CANARY}-plan.md"
@@ -180,7 +182,7 @@ class MigrationTest(_EncryptedBrain):
     def test_only_the_note_template_stays_tracked_under_vault(self):
         self.enable()
         tracked = _git(self.brain, "ls-files", "vault").stdout.split()
-        self.assertEqual(tracked, ["vault/templates/new-note.md"])
+        self.assertEqual(tracked, sorted(ev.MACHINERY))
 
     def test_every_note_has_a_blob(self):
         notes = self.enable()

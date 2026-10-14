@@ -249,7 +249,7 @@ def check_encryption(rep: Report) -> None:
         rep.fail(f"{len(leaked)} PLAINTEXT note(s) are tracked under vault/ despite encryption "
                  f"being on — these are committed in the clear: {leaked[:5]}")
     else:
-        rep.ok("nothing under vault/ is tracked except the note template")
+        rep.ok("nothing under vault/ is tracked except the note templates")
 
 
 def check_ollama(rep: Report) -> None:
