@@ -287,6 +287,39 @@ python3 scripts/doctor.py      # is the brain ready & consistent? (deps, Ollama,
 checks the live runtime (Ollama up, model pulled) and that the vault, sidecars, and
 cache all agree — add `--repair` to fix drift.
 
+## Know what is live: the dashboard and the inbox
+
+Two files sit at the **vault root**, outside every PARA root. That means they are never
+embedded and never show up in search, and you reach them by their fixed path:
+
+- **`vault/dashboard-index.md` — what is live and what is next.** One row per active project:
+  its next action, what it is blocked on, and when it was last touched. Search cannot answer
+  "where did I leave off", because similarity is not state. Rows **point at the note that owns
+  a task**; they never copy its checklist, so there is only one copy to keep current.
+- **`vault/inbox.md` — messages for the next session.** Append a line under *Messages*, such
+  as `- 2026-10-14: file the article I just read`, and commit. The next agent session reads
+  the inbox first. It does each message or turns it into a note, a checkbox or a dashboard
+  row, then deletes the line. It is a queue, not a log.
+
+You edit the dashboard by hand, because its next-action column is your judgment. Drift is
+still caught for you:
+
+```bash
+python3 scripts/doctor.py            # flags stale rows, missing rows, archived rows; counts inbox messages
+python3 scripts/dashboard_audit.py   # just the dashboard check
+```
+
+- **Stale:** the project changed after its row's *Last touched* date.
+- **Missing:** a project under `vault/projects/` has open `- [ ]` items but no row.
+- **Finished:** a row still points at a note that is now in `vault/archive/`.
+
+The post-commit hook runs the same check on each commit and names any project you just
+changed whose row is now behind. It never blocks a commit and never edits the dashboard.
+
+Both files are seeded once and then belong to you: an upgrade never overwrites them. An
+encrypted brain does not get them automatically, so create them yourself if you want them,
+and the dashboard check is skipped there because git cannot date encrypted notes.
+
 ## Add a PDF (optional)
 
 Notes are the core of the brain, but you can also make a **PDF searchable**. A PDF is
@@ -623,11 +656,14 @@ works: ask to add a PDF and `add_pdf_guided` prompts you through folder → PDF 
 
 ```
 ├── .githooks/pre-commit   # embeds staged notes locally + line-count guard
-├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill, mcp_server, features, glossary_new/scan/autolink_staged
+├── scripts/               # embedder, db, embed_staged, embed_vault, hydrate/update_cache, search, register, self_test, doctor, install_skill, mcp_server, features, glossary_new/scan/autolink_staged, dashboard_audit
 ├── skill/second-brain/    # AI skill — consult this brain from any project (install_skill.py)
 ├── vault/                 # your notes — point Obsidian here
 │   ├── projects/  areas/  resources/  archive/    # PARA roots (embedding scope; walked recursively)
 │   ├── glossary/          # controlled-vocabulary terms — NON-PARA, not embedded (the G in PARA(G))
+│   ├── dashboard-index.md # what is live and what is next — vault root, never embedded
+│   ├── inbox.md           # messages for the next session — vault root, never embedded
+│   ├── pdf-inbox/         # drop PDFs here to ingest them (add_pdf.py)
 │   └── …/.<note>.embed.json   # per-note vectors — DERIVED, git-ignored
 ├── tests/fixtures/vault/  # committed test-backend fixtures for self_test
 ├── data/brain.db          # SQLite vector cache — DERIVED, git-ignored

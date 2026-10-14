@@ -614,6 +614,33 @@ def check_dashboard(rep: Report) -> None:
         rep.ok("dashboard rows current; every project with open items has one")
 
 
+INBOX = "vault/inbox.md"
+
+
+def inbox_messages(text: str) -> list[str]:
+    """The waiting messages: ``- `` lines under the ``## Messages`` heading."""
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            inside = line.strip() == "## Messages"
+        elif inside and line.lstrip().startswith("- "):
+            out.append(line.strip())
+    return out
+
+
+def check_inbox(rep: Report) -> None:
+    """How many messages the owner left for the next session. Information, never a problem:
+    a full inbox is the feature working, and an unread one is not something --repair can fix."""
+    path = REPO_ROOT / INBOX
+    if not path.is_file():
+        return
+    n = len(inbox_messages(path.read_text(encoding="utf-8")))
+    if n:
+        rep.info(f"inbox: {n} message(s) waiting in {INBOX} — read and handle them")
+    else:
+        rep.ok("inbox empty")
+
+
 # --------------------------------------------------------------------------- #
 # --repair
 # --------------------------------------------------------------------------- #
@@ -697,6 +724,7 @@ def main(argv: list[str]) -> int:
     print("consistency:")
     report_consistency(rep, scan())
     check_dashboard(rep)
+    check_inbox(rep)
 
     print()
     if rep.problems:

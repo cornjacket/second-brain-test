@@ -156,6 +156,16 @@ Nothing else in the brain can notice the dashboard drifting, so two checks do:
 commit left behind, and `doctor.py` reports every stale, missing or finished row. Both only
 report — what the next action *is* stays your call.
 
+## The inbox — read it at the start of every session
+
+[`vault/inbox.md`](vault/inbox.md) holds messages the owner left for the next session. **Read
+it before anything else.** For each line under *Messages*: do it if it is small, otherwise turn
+it into something that lasts (a note, a checkbox in the project note that owns it, a dashboard
+row). Then **delete the line in the same commit**. It is a queue, not a log; git keeps the
+history. If a message cannot be handled yet, leave it and append a short reason, so the next
+session does not retry it blind. Like the dashboard it sits at the vault root, so it is never
+embedded and you reach it by path. `doctor.py` reports how many messages are waiting.
+
 ## Querying knowledge
 
 Before solving something from scratch, search what the brain already knows:
