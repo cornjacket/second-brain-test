@@ -1255,7 +1255,7 @@ def list_inbox_pdfs(folder: str = "") -> list[dict]:
     unreadable — macOS protects ``~/Downloads``, ``~/Desktop`` and ``~/Documents`` by default —
     and listing one raises rather than reporting it as empty, so "no PDFs here" always means
     what it says. Grant the app hosting this server file access, or use a folder outside the
-    protected set (the brain's own ``vault/inbox``).
+    protected set (the brain's own ``vault/pdf-inbox``).
     """
     if not folder:
         return [{"folder": str(f), "exists": f.is_dir(),

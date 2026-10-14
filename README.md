@@ -304,23 +304,26 @@ Ingest from the command line — pick a source folder, then a file, then a PARA 
 
 ```bash
 python3 scripts/add_pdf.py list                          # your configured source folders
-python3 scripts/add_pdf.py list vault/inbox              # the PDFs in one folder
-python3 scripts/add_pdf.py add vault/inbox/paper.pdf resources
-python3 scripts/add_pdf.py add vault/inbox/test-1.pdf projects --folder algebra
+python3 scripts/add_pdf.py list vault/pdf-inbox          # the PDFs in one folder
+python3 scripts/add_pdf.py add vault/pdf-inbox/paper.pdf resources
+python3 scripts/add_pdf.py add vault/pdf-inbox/test-1.pdf projects --folder algebra
 ```
 
 `--folder` puts the PDF in a subfolder of the PARA root, beside the note it belongs to —
 a project's paperwork trail living with its project note. The MCP `add_pdf` tool takes the
 same `folder` argument.
 
-Drop PDFs into `vault/inbox` — the one source folder configured out of the box.
+Drop PDFs into `vault/pdf-inbox` — the one source folder configured out of the box.
+It is named for what it holds: a bare `inbox` reads as a general triage folder, and other
+repos use that word for messages or raw ideas, but nothing here ever looks in it for anything
+except PDFs.
 
 > **Why not `~/Downloads`?** It looks like the obvious place, and it used to be a default
 > here. macOS keeps `~/Downloads`, `~/Desktop` and `~/Documents` behind per-app consent, and
 > the consent dialog can only be shown to a GUI app. These scripts run as a plain process,
 > so the system refuses them outright — there is no prompt to say yes to. Worse, a refused
 > folder reads as an **empty** one unless something checks, so it looks like you have no PDFs
-> rather than like a permission problem. Move the file into `vault/inbox` (Finder can, even
+> rather than like a permission problem. Move the file into `vault/pdf-inbox` (Finder can, even
 > when this cannot) instead of pointing the brain at a protected folder. If you add one
 > anyway, `python3 scripts/doctor.py` names it as unreadable, and listing it fails loudly
 > rather than pretending it is empty.

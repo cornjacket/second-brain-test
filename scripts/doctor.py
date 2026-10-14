@@ -151,7 +151,7 @@ def check_pdf_sources(rep: Report) -> None:
         elif not _ap.folder_readable(f):
             rep.info(f"PDF source folder UNREADABLE (permission denied) — it will look empty when "
                      f"listed, not broken: {f}. On macOS, Downloads/Desktop/Documents are "
-                     f"protected by default; grant access or use the brain's vault/inbox.")
+                     f"protected by default; grant access or use the brain's vault/pdf-inbox.")
         else:
             rep.ok(f"PDF source folder readable: {f}")
 

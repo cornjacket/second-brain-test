@@ -398,7 +398,7 @@ def content_notes(root: Path = REPO_ROOT) -> list[str]:
     """Every note this brain would encrypt, brain-relative and sorted.
 
     The **whole vault**, not just the PARA roots. Enumerating the roots looked equivalent
-    and was not: a note in any other vault folder — ``inbox/`` while you triage, or a
+    and was not: a note in any other vault folder — ``pdf-inbox/`` while you triage, or a
     grouping you invent next year — is still yours, is preserved by every upgrade, and
     would have been left out. Git-ignored and never committed, so it would not leak; it
     would just quietly stop being backed up, which is the harder failure to notice.

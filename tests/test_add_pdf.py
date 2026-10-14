@@ -88,10 +88,10 @@ class SelectionTest(unittest.TestCase):
 
     def test_inbox_folders_resolve_relative_to_repo_and_expand_absolute(self):
         with mock.patch.object(pdf_config, "inbox_dirs",
-                               return_value=["vault/inbox", "/tmp/elsewhere"]), \
+                               return_value=["vault/pdf-inbox", "/tmp/elsewhere"]), \
                 mock.patch.object(add_pdf, "REPO_ROOT", Path("/brain")):
             folders = add_pdf.inbox_folders()
-            self.assertEqual(folders[0], Path("/brain/vault/inbox"))
+            self.assertEqual(folders[0], Path("/brain/vault/pdf-inbox"))
             self.assertEqual(folders[1], Path("/tmp/elsewhere"))
 
 

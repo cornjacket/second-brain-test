@@ -43,8 +43,8 @@ PARA_ROOTS = ("projects", "areas", "resources", "archive")
 def inbox_folders() -> list[Path]:
     """Configured source folders (priority order), ``~`` expanded and made absolute.
 
-    Relative entries are resolved against the repo root, so ``vault/inbox`` means this brain's
-    inbox. Every configured folder is returned (existing or not) so a front-end can show — and
+    Relative entries are resolved against the repo root, so ``vault/pdf-inbox`` means this
+    brain's PDF inbox. Every configured folder is returned (existing or not) so a front-end can show — and
     explain — the full choice; ``list_pdfs`` simply yields nothing for one that is absent.
     """
     out = []
