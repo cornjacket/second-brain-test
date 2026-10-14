@@ -595,6 +595,25 @@ def _report_embed_budget(rep: "Report", notes) -> None:
                  f"{', …' if len(tight) > 3 else ''}")
 
 
+def check_dashboard(rep: Report) -> None:
+    """Rows that went stale, projects with open items and no row, finished projects still listed.
+
+    The dashboard is the one file an agent is told to trust for "where did we leave off", and
+    nothing else in the brain can notice it drifting — it is outside every PARA root, so no
+    embedding or cache layer ever reads it. Reported as needing an edit, because the fix is a
+    judgment (what *is* the next action?) that ``--repair`` must not invent. Skipped for an
+    encrypted brain, whose vault git cannot date.
+    """
+    import dashboard_audit
+    if dashboard_audit._encrypted() or not (REPO_ROOT / dashboard_audit.DASHBOARD).is_file():
+        return
+    findings = dashboard_audit.audit(REPO_ROOT)
+    for f in findings:
+        rep.needs_edit(f"dashboard: {f.message}")
+    if not findings:
+        rep.ok("dashboard rows current; every project with open items has one")
+
+
 # --------------------------------------------------------------------------- #
 # --repair
 # --------------------------------------------------------------------------- #
@@ -677,6 +696,7 @@ def main(argv: list[str]) -> int:
 
     print("consistency:")
     report_consistency(rep, scan())
+    check_dashboard(rep)
 
     print()
     if rep.problems:

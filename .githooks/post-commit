@@ -22,3 +22,7 @@ if ! python3 "$ROOT/scripts/update_cache.py" --from-commit HEAD; then
   echo "second-brain: post-commit cache update failed — run" \
        "'python3 scripts/doctor.py --repair' to re-embed and rebuild." >&2
 fi
+
+# Nudge, never block: if this commit changed a project and its dashboard row is now behind
+# (or it has open items and no row at all), say so while the work is still in your head.
+python3 "$ROOT/scripts/dashboard_audit.py" --from-commit HEAD || true

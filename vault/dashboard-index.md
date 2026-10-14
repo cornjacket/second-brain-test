@@ -52,6 +52,11 @@ file is the live set, and the note it pointed to keeps the history.
 Keep it short enough to read in one screen. If it does not fit, the problem is
 usually that a finished project never got its row removed.
 
+**Drift is checked, not trusted.** `python3 scripts/doctor.py` flags a row whose project
+changed after its *Last touched* date, a project with open items and no row, and a row for
+an archived project. The post-commit hook says the same about the project you just
+committed. Neither edits this file — they only tell you it has fallen behind.
+
 ## Finding open items mechanically
 
 This file is curated, not generated — but the exhaustive list is one command away,

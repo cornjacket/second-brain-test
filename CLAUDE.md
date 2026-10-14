@@ -145,8 +145,16 @@ late.
 
 It deliberately sits at the **vault root, outside every PARA root**, so it is never
 embedded and never appears in search results. You will not stumble across it — come
-here by path. Keep it current when work lands, and **point at the note that owns a
-task rather than copying its checklist**; the file itself explains why.
+here by path. **Point at the note that owns a task rather than copying its checklist**;
+the file itself explains why.
+
+**Keep it current in the same commit as the work.** When a commit changes a project, update
+that project's row — its next action and *Last touched* — alongside it. A project under
+`vault/projects/` with open `- [ ]` items needs a row; an archived one must lose its row.
+Nothing else in the brain can notice the dashboard drifting, so two checks do:
+`scripts/dashboard_audit.py` runs from the post-commit hook and names a row that the
+commit left behind, and `doctor.py` reports every stale, missing or finished row. Both only
+report — what the next action *is* stays your call.
 
 ## Querying knowledge
 
