@@ -11,8 +11,9 @@ query), ``db`` (WAL sqlite-vec connection), and ``search_vault.search()``
 (cosine-KNN over ``data/brain.db``) — so there is exactly one retrieval
 implementation.
 
-**Mostly read** — search, fetch, browse, glossary — plus exactly one writer,
-``add_note``, which **commits and pushes**. That is deliberate, and it is what keeps
+**Mostly read** — search, fetch, browse, glossary — plus a small write surface:
+``add_note`` creates, ``replace_note`` edits, ``add_asset`` adds a file beside a note, and all
+of them **commit and push**. Keeping that surface small is deliberate, and it is what keeps
 the write path from becoming a second system: a note is embedded by the *pre-commit
 hook* and the cache is refreshed by the *post-commit hook*, so committing reuses the
 one embedding path this brain already has instead of inventing a parallel one that
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import contextlib
 import difflib
+import json
 import os
 import re
 import subprocess
@@ -44,6 +46,7 @@ import add_pdf as _add_pdf  # noqa: E402  (task #7 — folder-first selection + 
 import glossary_new  # noqa: E402  (term scaffold + slug — single source of the term shape)
 import glossary_scan  # noqa: E402  (the shared link engine, reused by the write path)
 import hydrate_cache  # noqa: E402
+import note_edit  # noqa: E402  (what may be edited, and the edit token)
 import note_view  # noqa: E402  (frontmatter_tags — the tag vocabulary for list_tags)
 import pdf_search as _pdf_search  # noqa: E402  (task #7 — passage search + full-passage fetch)
 import search_vault  # noqa: E402
@@ -218,12 +221,19 @@ def search_second_brain(query: str, k: int = 5) -> list[dict]:
 
 
 @mcp.tool(structured_output=False)
-def get_note(source_file: str) -> str:
-    """Return the Markdown of a note surfaced by ``search_second_brain``.
+def get_note(source_file: str, with_hash: bool = False) -> str:
+    """Return the Markdown of a note — pass `with_hash=True` if you intend to edit it.
 
-    ``source_file`` may be the absolute path from a search hit or a vault-relative
-    one; it must resolve **inside** the brain's ``vault/`` — arbitrary file reads are
-    refused.
+    ``source_file`` may be the absolute path from a search hit or a vault-relative one; it must
+    resolve **inside** the brain's ``vault/`` — arbitrary file reads are refused.
+
+    With `with_hash=True` the reply is a JSON object instead of raw Markdown:
+    `{"source_file", "hash", "content"}`. Hand that `hash` to `replace_note` as
+    `expected_hash` and your edit is refused if the file changed in between — which is how you
+    avoid overwriting something the owner did in Obsidian after you read it.
+
+    **Read and hash in ONE call.** There is no separate hash tool on purpose: two calls race,
+    and you would get a token for content you never saw.
     """
     p = Path(source_file)
     if not p.is_absolute():
@@ -234,7 +244,12 @@ def get_note(source_file: str) -> str:
         raise ValueError(f"refusing to read outside the vault: {source_file}")
     if not p.is_file():
         raise FileNotFoundError(source_file)
-    return p.read_text(encoding="utf-8")
+    text = p.read_text(encoding="utf-8")
+    if not with_hash:
+        # Byte-identical to what this tool has always returned, so no existing caller changes.
+        return text
+    return json.dumps({"source_file": p.relative_to(BRAIN).as_posix(),
+                       "hash": note_edit.file_hash(p), "content": text}, indent=2)
 
 
 @mcp.tool(structured_output=False)
@@ -354,7 +369,8 @@ def _near_misses(key: str, by_key: dict, n: int = 3) -> list[str]:
 
 
 # --- the write path ----------------------------------------------------------------------
-# add_note is the ONLY tool that mutates the brain. Two rules shape it:
+# add_note is the tool that CREATES; replace_note edits an existing note and shares this
+# write path. Two rules shape both:
 #
 #   1. It commits, because the commit IS the embed. The pre-commit hook embeds staged notes
 #      and the post-commit hook re-hydrates the cache, so a committed note is searchable with
@@ -588,7 +604,7 @@ def _push(branch: str) -> str:
 def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None,
              subpath: str = "", embed: bool = True, entry: bool = False,
              descriptor: str = "") -> str:
-    """Create a NEW note — `subpath` nests it, `entry`/`descriptor` name it, `embed=False` marks a non-note.
+    """Create a NEW note — `subpath` nests it, `entry`/`descriptor` name it. To CHANGE one, use `replace_note`.
 
     Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
     (durable over transient; "would I search for this in six months?"; link don't copy). Apply
@@ -925,6 +941,89 @@ def add_asset(para_root: str, subpath: str, filename: str, content: str,
 
 
 @mcp.tool(structured_output=False)
+def replace_note(source_file: str, body: str, expected_hash: str) -> str:
+    """Replace an EXISTING note's full text, then commit and push. The editing tool.
+
+    Call `get_note(source_file, with_hash=True)` first and pass its `hash` back as
+    `expected_hash`. If the file changed in between — the owner edited it in Obsidian, another
+    client wrote to it — the edit is **refused** rather than applied. Without that check you
+    would silently revert whatever happened after your read, and report success.
+
+    `body` is the note's **entire** new text, frontmatter included. This is a replace, not a
+    patch: whatever you leave out is gone. So edit the string `get_note` gave you rather than
+    composing a fresh one, or you will drop tags, `related_auto:` links and fenced regions that
+    were already there.
+
+    Edits a note that already exists and **never creates one** — use `add_note` for that.
+    Targets are Markdown notes under projects / areas / resources / archive. Committing is what
+    re-embeds the note, so the change is searchable at once; the push is what makes it visible
+    to the brain's other clients.
+
+    **This description and this schema are the authority — not any convention you remember.**
+
+    Returns a report of what landed, including whether the push succeeded.
+    """
+    try:
+        path = note_edit.resolve_editable(source_file, BRAIN)
+    except note_edit.NotEditable as exc:
+        raise ValueError(str(exc)) from exc
+    if not path.is_file():
+        raise ValueError(f"no such note: {source_file} — replace_note only edits a note that "
+                         f"already exists; use add_note to create one")
+
+    # Optimistic concurrency. A whole-file digest, NOT note_view.content_hash: that one is taken
+    # over the canonical view and is blind to anything inside a no-embed or lexical-only fence,
+    # so a ticked checkbox would compare equal and this edit would quietly undo it.
+    actual = note_edit.file_hash(path)
+    if expected_hash != actual:
+        raise ValueError(
+            f"{path.relative_to(BRAIN).as_posix()} changed since you read it "
+            f"(expected {expected_hash}, found {actual}). Call get_note(..., with_hash=True) "
+            f"again, re-apply your change to the current text, and retry — do NOT resend this "
+            f"body, which would discard whatever the other edit did.")
+
+    # Before anything is written. A fence that never closes excludes NOTHING, so the region the
+    # author meant to keep out of the index is embedded instead — silently, because the note
+    # still commits and still renders. Checking the string means a bad body never reaches disk.
+    problems = note_view.fence_errors(body)
+    if problems:
+        raise ValueError("the new text has a malformed exclusion fence, so nothing was written: "
+                         + "; ".join(problems))
+
+    rel = path.relative_to(BRAIN).as_posix()
+    previous = path.read_bytes()      # for rollback: an edit has something to put back
+    path.write_text(body, encoding="utf-8")
+
+    commit_paths, subject = [rel], f"note: edit {path.stem}"
+    if _encryption_on():
+        try:
+            blob, _ = _encrypt_for_commit(rel)
+        except Exception as exc:
+            path.write_bytes(previous)
+            raise ValueError(f"could not encrypt the edit, so it was not applied: {exc}") from exc
+        commit_paths, subject = [blob], f"note: edit {Path(blob).name}"
+    try:
+        # Only this file, by pathspec — the user's in-progress work must never be swept into a
+        # commit an agent authored. The re-add afterwards picks up whatever a hook restaged.
+        _git("add", "--", *commit_paths)
+        _git("commit", "-m", subject, "--", *commit_paths)
+        _git("add", "--", *commit_paths, check=False)
+    except subprocess.CalledProcessError as exc:
+        # Restore rather than delete. add_note unlinks a half-written new note; an edit has a
+        # previous version, and leaving the brain holding an uncommitted rewrite would be worse
+        # than the failed commit.
+        path.write_bytes(previous)
+        raise ValueError(f"git commit failed, the note was restored unchanged: {_why(exc)}") from exc
+
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    pushed = _push(branch)
+    head = (f"PARTIAL SUCCESS — ACTION NEEDED (tell the user this, do not just say 'saved'): "
+            f"{pushed}\n" if pushed.startswith(("NOT PUSHED", "not pushed")) else "")
+    return (f"{head}replaced {rel}\ncommitted to {branch}\n{pushed}\n"
+            f"re-embedded by the pre-commit hook, so the new text is searchable now")
+
+
+@mcp.tool(structured_output=False)
 def list_vault(para_root: str = "", match: str = "") -> list[dict]:
     """Browse the vault's *structure*, subfolders included — call BEFORE add_note to decide where a note goes.
 
@@ -966,6 +1065,10 @@ def list_vault(para_root: str = "", match: str = "") -> list[dict]:
 # parameter names), and prune anything older than a few releases: this is a corrective for
 # stale memory, not a changelog.
 INTERFACE_CHANGES = [
+    ("2026-10-27", "replace_note is NEW — a client can now CHANGE an existing note, not "
+                   "only create one. Call get_note(path, with_hash=True) and pass the "
+                   "hash back as expected_hash; the edit is refused if the file moved "
+                   "under you. add_note stays create-only."),
     ("2026-09-01", "NEW fence `<!-- second-brain:lexical-only:begin/end -->` — keeps a region "
                    "out of the VECTOR but in KEYWORD search, for IDs, contacts and checklists. "
                    "`no-embed` still removes a region from both. Fences do not nest."),

@@ -515,7 +515,8 @@ the skill exactly. It exposes:
 | Tool | Does |
 | --- | --- |
 | `search_second_brain(query, k)` | Find notes by meaning — absolute paths + relevance. |
-| `get_note(source_file)` | Read one note's Markdown (refuses any path outside `vault/`). |
+| `get_note(source_file, with_hash)` | Read one note's Markdown. `with_hash=True` also returns an edit token, for `replace_note`. |
+| **`replace_note(source_file, body, expected_hash)`** | **Change an existing note — then commit and push it.** Refused if the file changed since you read it. |
 | `list_vault(para_root)` | Browse the PARA structure — what's already filed, and where. |
 | `get_note_template(variant)` | A note template — `note` (default) or `not-a-note`, the `embed: false` variant for material that isn't a note. |
 | `list_glossary_terms()` | Every defined glossary term + aliases. |
