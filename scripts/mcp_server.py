@@ -604,7 +604,7 @@ def _push(branch: str) -> str:
 def add_note(title: str, para_root: str, body: str, tags: list[str] | None = None,
              subpath: str = "", embed: bool = True, entry: bool = False,
              descriptor: str = "") -> str:
-    """Create a NEW note — `subpath` nests it, `entry`/`descriptor` name it. To CHANGE one, use `replace_note`.
+    """Create a NEW note — `subpath` nests, `entry`/`descriptor` name, `embed=False` marks a non-note. Changing one: `replace_note`.
 
     Call `get_note_template` FIRST — it carries this brain's bar for **what earns a note at all**
     (durable over transient; "would I search for this in six months?"; link don't copy). Apply
