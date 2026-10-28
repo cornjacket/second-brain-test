@@ -10,5 +10,3 @@ and compare vectors with cosine distance.
 
 The same model must embed both the stored notes and the search query — mixing
 models yields incomparable vectors and meaningless results.
-
-A line added by replace_note to prove the hook re-embeds.
