@@ -8,4 +8,7 @@
 #
 # Provides scripts/mcp_server.py's `from mcp.server.fastmcp import FastMCP`.
 # The FastMCP API lives in the official SDK from 1.2 on; needs Python >= 3.10.
-mcp>=1.2
+#
+# Upper bound: mcp 2.x renamed FastMCP to MCPServer, so the import above fails on 2.x.
+# Porting mcp_server.py to 2.x is a separate task, tracked in second-brain-devkit.
+mcp>=1.2,<2
